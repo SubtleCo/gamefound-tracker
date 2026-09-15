@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Campaign Telemetry</title>
+<title>Old Man Mosa</title>
 <meta name="description" content="Funding, backer, and comment trends for Gamefound crowdfunding campaigns, tracked from hourly/live API snapshots.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A1%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
@@ -25,6 +25,8 @@
     --backers-wash: rgba(235,104,52,0.10);
     --comments: #1baf7a;
     --comments-wash: rgba(27,175,122,0.10);
+    --project-a: #4a3aa7;
+    --project-b: #e87ba4;
     --good: #006300;
     --critical: #d03b3b;
     --shadow: 0 1px 2px rgba(11,11,11,0.04), 0 8px 24px rgba(11,11,11,0.05);
@@ -51,6 +53,8 @@
       --backers-wash: rgba(217,89,38,0.14);
       --comments: #199e70;
       --comments-wash: rgba(25,158,112,0.14);
+      --project-a: #9085e9;
+      --project-b: #d55181;
       --good: #0ca30c;
       --critical: #e66767;
       --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
@@ -73,6 +77,8 @@
     --backers-wash: rgba(217,89,38,0.14);
     --comments: #199e70;
     --comments-wash: rgba(25,158,112,0.14);
+    --project-a: #9085e9;
+    --project-b: #d55181;
     --good: #0ca30c;
     --critical: #e66767;
     --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
@@ -104,6 +110,7 @@
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
   }
+  [hidden] { display: none !important; }
 
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
@@ -158,7 +165,31 @@
     50% { opacity: 0.45; }
   }
 
-  .masthead-controls { display: flex; align-items: center; gap: 10px; }
+  .masthead-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+  .mode-toggle {
+    display: inline-flex;
+    padding: 3px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    gap: 2px;
+  }
+  .mode-btn {
+    font-family: var(--font-sans);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: 999px;
+    padding: 7px 13px;
+    cursor: pointer;
+    transition: color .15s ease, background-color .15s ease;
+  }
+  .mode-btn:hover { color: var(--text-primary); }
+  .mode-btn.is-active { background: var(--accent); color: #fff; }
+
   .select-wrap select {
     font-family: var(--font-sans);
     font-size: 13px;
@@ -192,6 +223,24 @@
     font-size: 12.5px;
     color: var(--text-muted);
   }
+
+  .compare-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .compare-legend li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .compare-legend .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .compare-legend .name { font-weight: 600; color: var(--text-primary); }
+  .compare-legend .detail { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
 
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
   .tile {
@@ -266,7 +315,7 @@
     padding: 7px 10px;
     font-family: var(--font-mono);
     font-size: 12px;
-    line-height: 1.4;
+    line-height: 1.5;
     box-shadow: var(--shadow);
     opacity: 0;
     transition: opacity .1s ease;
@@ -274,7 +323,9 @@
     z-index: 5;
   }
   .chart-tooltip.is-visible { opacity: 1; }
-  .chart-tooltip .tt-date { color: var(--text-muted); font-size: 11px; margin-bottom: 2px; }
+  .chart-tooltip .tt-date { color: var(--text-muted); font-size: 11px; margin-bottom: 3px; }
+  .chart-tooltip .tt-row { display: flex; align-items: center; gap: 6px; }
+  .chart-tooltip .tt-row .swatch { width: 7px; height: 7px; border-radius: 50%; flex: none; }
   .chart-tooltip .tt-value { color: var(--text-primary); font-weight: 600; }
 
   .raw-data { display: flex; flex-direction: column; align-items: flex-start; }
@@ -344,7 +395,11 @@
       </div>
     </div>
     <div class="masthead-controls">
-      <label class="select-wrap">
+      <div class="mode-toggle" role="group" aria-label="View mode">
+        <button type="button" class="mode-btn is-active" data-mode="single">Single campaign</button>
+        <button type="button" class="mode-btn" data-mode="compare">Compare campaigns</button>
+      </div>
+      <label class="select-wrap" id="select-wrap">
         <span class="sr-only">Campaign</span>
         <select id="project-select"></select>
       </label>
@@ -353,12 +408,13 @@
   </header>
 
   <p class="meta-line" id="meta-line">Loading snapshots&hellip;</p>
+  <ul class="compare-legend" id="compare-legend" hidden></ul>
 
   <section class="tiles" id="tiles" aria-label="Current totals"></section>
 
   <section class="panels" id="panels" aria-label="Trends over time"></section>
 
-  <section class="raw-data">
+  <section class="raw-data" id="raw-data-section">
     <button type="button" id="toggle-table" class="ghost-btn" aria-expanded="false">View raw snapshots</button>
     <div class="table-wrap" id="table-wrap" hidden>
       <table id="data-table">
@@ -372,7 +428,7 @@
   </section>
 
   <footer class="page-footer">
-    <p>Tend Expansions refreshes automatically from a public snapshot on S3, updated by a scheduled Lambda every 5 minutes; this page re-polls it every 60 seconds while open. Altera's campaign has concluded &mdash; its figures are a fixed snapshot from June 2026.</p>
+    <p>Tend Expansions refreshes automatically from a public snapshot on S3, updated by a scheduled Lambda every 5 minutes; this page re-polls it every 60 seconds while open. Altera's campaign has concluded &mdash; its figures are a fixed snapshot from June 2026. Compare mode aligns both by percent of campaign elapsed (start to scheduled end), not by calendar date.</p>
   </footer>
 </div>
 
@@ -387,13 +443,19 @@
       id: 'tend-expansions',
       label: 'Tend Expansions',
       status: 'live',
-      url: 'https://tend-expansions-data-fetch-alteradatabucket-ubsldl5prg3c.s3.us-east-1.amazonaws.com/tend-expansions/history.json'
+      url: 'https://tend-expansions-data-fetch-alteradatabucket-ubsldl5prg3c.s3.us-east-1.amazonaws.com/tend-expansions/history.json',
+      campaignStart: '2026-09-15T15:00:00Z',
+      campaignEnd: '2026-10-07T22:00:00Z',
+      color: '--project-a'
     },
     {
       id: 'altera',
       label: 'Altera',
       status: 'archived',
-      url: 'data/altera.json'
+      url: 'data/altera.json',
+      campaignStart: '2026-06-09T15:00:00Z',
+      campaignEnd: '2026-06-30T03:55:49.957Z',
+      color: '--project-b'
     }
   ];
 
@@ -410,6 +472,8 @@
     if (a >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
     return String(Math.round(v));
   }
+  function fmtPct(v) { return v.toFixed(0) + '%'; }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
   var dayFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
   var fullFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' });
@@ -421,17 +485,22 @@
     { key: 'commentCount', label: 'Comments', colorVar: '--comments', washVar: '--comments-wash', hero: fmtInt, axis: fmtIntCompact, tooltip: fmtInt }
   ];
 
+  var mode = 'single';
+  var modeButtons = Array.prototype.slice.call(document.querySelectorAll('.mode-btn'));
   var projectSelect = document.getElementById('project-select');
+  var selectWrap = document.getElementById('select-wrap');
   var projectTitle = document.getElementById('project-title');
   var gamefoundLink = document.getElementById('gamefound-link');
   var statusPill = document.getElementById('status-pill');
   var statusText = document.getElementById('status-text');
   var metaLine = document.getElementById('meta-line');
+  var compareLegend = document.getElementById('compare-legend');
   var tilesEl = document.getElementById('tiles');
   var panelsEl = document.getElementById('panels');
   var tbody = document.getElementById('data-tbody');
   var toggleBtn = document.getElementById('toggle-table');
   var tableWrap = document.getElementById('table-wrap');
+  var rawDataSection = document.getElementById('raw-data-section');
 
   var refreshTimer = null;
 
@@ -444,12 +513,38 @@
 
   projectSelect.addEventListener('change', function () { loadProject(projectSelect.value); });
 
+  modeButtons.forEach(function (btn) {
+    btn.addEventListener('click', function () { setMode(btn.getAttribute('data-mode')); });
+  });
+
   toggleBtn.addEventListener('click', function () {
     var willShow = tableWrap.hidden;
     tableWrap.hidden = !willShow;
     toggleBtn.setAttribute('aria-expanded', String(willShow));
     toggleBtn.textContent = willShow ? 'Hide raw snapshots' : 'View raw snapshots';
   });
+
+  function setMode(next) {
+    if (next === mode) return;
+    mode = next;
+    modeButtons.forEach(function (b) { b.classList.toggle('is-active', b.getAttribute('data-mode') === mode); });
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+
+    var isSingle = mode === 'single';
+    selectWrap.hidden = !isSingle;
+    gamefoundLink.hidden = !isSingle;
+    rawDataSection.hidden = !isSingle;
+    compareLegend.hidden = isSingle;
+    statusPill.hidden = !isSingle;
+
+    if (isSingle) {
+      projectTitle.textContent = ' ';
+      loadProject(projectSelect.value);
+    } else {
+      projectTitle.textContent = 'Compare campaigns';
+      loadCompare();
+    }
+  }
 
   function niceTicks(min, max, count) {
     if (min === max) { min -= 1; max += 1; }
@@ -492,9 +587,22 @@
     }).join(' ');
   }
 
-  function loadProject(id) {
-    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+  function fetchProjectData(project) {
+    return fetch(project.url, { cache: 'no-store' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (rows) {
+        rows.forEach(function (r) { r._date = new Date(r.datetime); });
+        rows.sort(function (a, b) { return a._date - b._date; });
+        return rows;
+      });
+  }
 
+  // ---- single-campaign view ----
+
+  function loadProject(id) {
     var project = PROJECTS.filter(function (p) { return p.id === id; })[0] || PROJECTS[0];
     projectSelect.value = project.id;
     projectTitle.textContent = project.label;
@@ -504,24 +612,16 @@
     statusPill.className = 'status-pill' + (isLive ? ' is-live' : '');
     statusText.textContent = isLive ? 'Live' : 'Archived';
 
-    fetchAndRender(project);
+    fetchAndRenderSingle(project);
 
     if (isLive) {
-      refreshTimer = setInterval(function () { fetchAndRender(project); }, REFRESH_MS);
+      refreshTimer = setInterval(function () { fetchAndRenderSingle(project); }, REFRESH_MS);
     }
   }
 
-  function fetchAndRender(project) {
-    fetch(project.url, { cache: 'no-store' })
-      .then(function (res) {
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.json();
-      })
-      .then(function (rows) {
-        rows.forEach(function (r) { r._date = new Date(r.datetime); });
-        rows.sort(function (a, b) { return a._date - b._date; });
-        render(rows);
-      })
+  function fetchAndRenderSingle(project) {
+    fetchProjectData(project)
+      .then(function (rows) { renderSingle(rows); })
       .catch(function (err) {
         metaLine.textContent = 'Could not load snapshot data for this campaign.';
         tilesEl.innerHTML = '';
@@ -530,7 +630,7 @@
       });
   }
 
-  function render(rows) {
+  function renderSingle(rows) {
     if (!rows.length) {
       metaLine.textContent = 'No snapshots yet — check back once the tracker has run a few times.';
       tilesEl.innerHTML = '';
@@ -553,7 +653,7 @@
       var values = rows.map(function (r) { return r[metric.key]; });
       var delta = last[metric.key] - first[metric.key];
       tilesEl.appendChild(buildTile(metric, values, delta, first._date));
-      panelsEl.appendChild(buildPanel(metric, rows, values, delta, first._date));
+      panelsEl.appendChild(buildTimePanel(metric, rows, values, delta, first._date));
     });
 
     tbody.innerHTML = '';
@@ -593,7 +693,7 @@
     return tile;
   }
 
-  function buildPanel(metric, rows, values, delta, firstDate) {
+  function buildTimePanel(metric, rows, values, delta, firstDate) {
     var panel = document.createElement('div');
     panel.className = 'panel';
     var lastVal = values[values.length - 1];
@@ -695,10 +795,10 @@
       var scaleX = W / rect.width;
       var clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
       var localX = (clientX - rect.left) * scaleX;
-      var clamped = Math.min(Math.max(localX, marginLeft), W - marginRight);
+      var clamped = clamp(localX, marginLeft, W - marginRight);
       var frac = (clamped - marginLeft) / (W - marginLeft - marginRight);
       var idx = Math.round(frac * (rows.length - 1));
-      idx = Math.min(Math.max(idx, 0), rows.length - 1);
+      idx = clamp(idx, 0, rows.length - 1);
 
       var px = xScale(rows[idx]._date.getTime());
       var py = yScale(values[idx]);
@@ -719,6 +819,193 @@
       if (left + 150 > containerRect.width) left = ttX - 150 - 14;
       tooltip.style.left = Math.max(0, left) + 'px';
       tooltip.style.top = Math.max(0, ttY - 44) + 'px';
+      tooltip.classList.add('is-visible');
+    }
+
+    function pointerLeave() {
+      hoverLayer.style.opacity = '0';
+      tooltip.classList.remove('is-visible');
+    }
+
+    hoverTarget.addEventListener('pointermove', pointerMove);
+    hoverTarget.addEventListener('pointerleave', pointerLeave);
+    hoverTarget.addEventListener('touchmove', function (e) { pointerMove(e); e.preventDefault(); }, { passive: false });
+    hoverTarget.addEventListener('touchend', pointerLeave);
+
+    return panel;
+  }
+
+  // ---- compare view ----
+
+  function loadCompare() {
+    metaLine.textContent = 'Loading snapshots…';
+    tilesEl.innerHTML = '';
+    panelsEl.innerHTML = '';
+
+    Promise.all(PROJECTS.map(function (p) {
+      return fetchProjectData(p).then(function (rows) { return { project: p, rows: rows }; })
+        .catch(function () { return { project: p, rows: null }; });
+    })).then(function (results) {
+      renderCompare(results);
+      if (mode === 'compare' && PROJECTS.some(function (p) { return p.status === 'live'; })) {
+        refreshTimer = setInterval(loadCompare, REFRESH_MS);
+      }
+    });
+  }
+
+  function renderCompare(results) {
+    var ok = results.filter(function (r) { return r.rows && r.rows.length; });
+
+    if (!ok.length) {
+      metaLine.textContent = 'Could not load snapshot data for either campaign.';
+      compareLegend.hidden = true;
+      return;
+    }
+
+    metaLine.textContent = 'Aligned by percent of campaign elapsed, start to scheduled end.';
+
+    compareLegend.hidden = false;
+    compareLegend.innerHTML = ok.map(function (r) {
+      var start = new Date(r.project.campaignStart);
+      var end = new Date(r.project.campaignEnd);
+      var totalDays = (end - start) / 86400000;
+      var lastPct = clamp((r.rows[r.rows.length - 1]._date - start) / (end - start) * 100, 0, 100);
+      var detail = r.project.status === 'live'
+        ? ('day ' + Math.max(1, Math.ceil((r.rows[r.rows.length - 1]._date - start) / 86400000)) + ' of ' + Math.round(totalDays) + ' · ' + fmtPct(lastPct) + ' elapsed')
+        : (Math.round(totalDays * 10) / 10 + '-day campaign · completed');
+      return '<li><span class="swatch" style="background:var(' + r.project.color + ')"></span>' +
+             '<span class="name">' + r.project.label + '</span>' +
+             '<span class="detail">' + detail + '</span></li>';
+    }).join('');
+
+    panelsEl.innerHTML = '';
+    METRICS.forEach(function (metric) {
+      panelsEl.appendChild(buildComparePanel(metric, ok));
+    });
+  }
+
+  function buildComparePanel(metric, projectRows) {
+    var panel = document.createElement('div');
+    panel.className = 'panel';
+
+    var head = document.createElement('div');
+    head.className = 'panel-head';
+    head.innerHTML = '<div><h3>' + metric.label + '</h3><p class="panel-sub">by percent of campaign elapsed</p></div>';
+    panel.appendChild(head);
+
+    var chartWrap = document.createElement('div');
+    chartWrap.className = 'chart-wrap';
+    panel.appendChild(chartWrap);
+
+    var W = 960, H = 260;
+    var marginLeft = 54, marginRight = 16, marginTop = 16, marginBottom = 26;
+
+    var series = projectRows.map(function (r) {
+      var start = new Date(r.project.campaignStart).getTime();
+      var end = new Date(r.project.campaignEnd).getTime();
+      var points = r.rows.map(function (row) {
+        return { pct: clamp((row._date.getTime() - start) / (end - start) * 100, 0, 100), value: row[metric.key], row: row };
+      });
+      return { project: r.project, points: points };
+    });
+
+    var allValues = [];
+    series.forEach(function (s) { s.points.forEach(function (p) { allValues.push(p.value); }); });
+    var yt = niceTicks(Math.min.apply(null, allValues), Math.max.apply(null, allValues), 4);
+
+    function xScale(pct) { return marginLeft + (pct / 100) * (W - marginLeft - marginRight); }
+    function yScale(v) { return H - marginBottom - ((v - yt.min) / (yt.max - yt.min || 1)) * (H - marginTop - marginBottom); }
+
+    var baselineY = H - marginBottom;
+
+    var gridSvg = yt.ticks.map(function (tv) {
+      var y = yScale(tv);
+      return '<line class="grid-line" x1="' + marginLeft + '" x2="' + (W - marginRight) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" />' +
+             '<text class="axis-label" x="8" y="' + (y + 3.5).toFixed(1) + '">' + metric.axis(tv) + '</text>';
+    }).join('');
+
+    var xTicksSvg = [0, 25, 50, 75, 100].map(function (pct) {
+      return '<text class="axis-label axis-label-x" x="' + xScale(pct).toFixed(1) + '" y="' + (H - 6) + '">' + pct + '%</text>';
+    }).join('');
+
+    var linesSvg = series.map(function (s) {
+      var color = 'var(' + s.project.color + ')';
+      if (s.points.length < 2) {
+        var p0 = s.points[0];
+        return '<circle cx="' + xScale(p0.pct).toFixed(1) + '" cy="' + yScale(p0.value).toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2" data-pid="' + s.project.id + '" />';
+      }
+      var d = 'M' + s.points.map(function (p) { return xScale(p.pct).toFixed(1) + ',' + yScale(p.value).toFixed(1); }).join(' L');
+      var last = s.points[s.points.length - 1];
+      return '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />' +
+             '<circle cx="' + xScale(last.pct).toFixed(1) + '" cy="' + yScale(last.value).toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2" />';
+    }).join('');
+
+    var hoverDotsSvg = series.map(function (s) {
+      var color = 'var(' + s.project.color + ')';
+      return '<circle class="hover-dot" data-pid="' + s.project.id + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2" />';
+    }).join('');
+
+    chartWrap.innerHTML =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + metric.label + ' compared by percent of campaign elapsed">' +
+        '<line class="baseline" x1="' + marginLeft + '" x2="' + (W - marginRight) + '" y1="' + baselineY + '" y2="' + baselineY + '" />' +
+        gridSvg +
+        xTicksSvg +
+        linesSvg +
+        '<g class="hover-layer" style="opacity:0">' +
+          '<line class="crosshair" x1="0" x2="0" y1="' + marginTop + '" y2="' + baselineY + '" />' +
+          hoverDotsSvg +
+        '</g>' +
+        '<rect class="hover-target" x="' + marginLeft + '" y="0" width="' + (W - marginLeft - marginRight) + '" height="' + H + '" />' +
+      '</svg>' +
+      '<div class="chart-tooltip"><div class="tt-date"></div></div>';
+
+    var svg = chartWrap.querySelector('svg');
+    var hoverLayer = chartWrap.querySelector('.hover-layer');
+    var crosshair = chartWrap.querySelector('.crosshair');
+    var hoverTarget = chartWrap.querySelector('.hover-target');
+    var tooltip = chartWrap.querySelector('.chart-tooltip');
+    var ttDate = tooltip.querySelector('.tt-date');
+
+    function nearestPoint(points, pct) {
+      var best = points[0];
+      var bestDist = Math.abs(points[0].pct - pct);
+      for (var i = 1; i < points.length; i++) {
+        var d = Math.abs(points[i].pct - pct);
+        if (d < bestDist) { bestDist = d; best = points[i]; }
+      }
+      return best;
+    }
+
+    function pointerMove(evt) {
+      var rect = svg.getBoundingClientRect();
+      if (!rect.width) return;
+      var scaleX = W / rect.width;
+      var clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+      var localX = (clientX - rect.left) * scaleX;
+      var clamped = clamp(localX, marginLeft, W - marginRight);
+      var hoverPct = ((clamped - marginLeft) / (W - marginLeft - marginRight)) * 100;
+
+      crosshair.setAttribute('x1', clamped.toFixed(1));
+      crosshair.setAttribute('x2', clamped.toFixed(1));
+      hoverLayer.style.opacity = '1';
+
+      var rowsHtml = '<div class="tt-date">' + fmtPct(hoverPct) + ' of campaign</div>';
+      series.forEach(function (s) {
+        var nearest = nearestPoint(s.points, hoverPct);
+        var dot = hoverLayer.querySelector('.hover-dot[data-pid="' + s.project.id + '"]');
+        dot.setAttribute('cx', xScale(nearest.pct).toFixed(1));
+        dot.setAttribute('cy', yScale(nearest.value).toFixed(1));
+        rowsHtml += '<div class="tt-row"><span class="swatch" style="background:var(' + s.project.color + ')"></span>' +
+                    '<span>' + s.project.label + ':</span> <span class="tt-value">' + metric.tooltip(nearest.value) + '</span></div>';
+      });
+      tooltip.innerHTML = rowsHtml;
+
+      var containerRect = chartWrap.getBoundingClientRect();
+      var ttX = (clamped / W) * containerRect.width;
+      var left = ttX + 14;
+      if (left + 170 > containerRect.width) left = ttX - 170 - 14;
+      tooltip.style.left = Math.max(0, left) + 'px';
+      tooltip.style.top = '8px';
       tooltip.classList.add('is-visible');
     }
 
