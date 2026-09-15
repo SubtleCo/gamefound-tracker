@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Old Man Mosa</title>
-<meta name="description" content="Funding, backer, and comment trends for Gamefound crowdfunding campaigns, tracked from hourly/live API snapshots.">
+<meta name="description" content="Funding, backer, and comment trends for IV Studio's crowdfunding campaigns &mdash; live tracking plus full campaign history.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A1%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
 <style>
@@ -227,20 +227,32 @@
   .compare-legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 18px;
+    gap: 8px;
     margin: 0;
     padding: 0;
     list-style: none;
   }
-  .compare-legend li {
+  .compare-legend li { display: contents; }
+  .compare-legend label {
     display: flex;
-    align-items: baseline;
-    gap: 8px;
-    font-size: 13px;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: 12.5px;
+    background: var(--surface);
+    transition: border-color .15s ease, background-color .15s ease;
   }
-  .compare-legend .swatch { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .compare-legend label:hover { border-color: var(--text-muted); }
+  .compare-legend label:has(input:checked) { border-color: var(--axis); }
+  .compare-legend input[type="checkbox"] { width: 14px; height: 14px; margin: 0; cursor: pointer; flex: none; }
+  .compare-legend .swatch { width: 9px; height: 9px; border-radius: 50%; flex: none; transition: opacity .15s ease; }
+  .compare-legend input:not(:checked) ~ .swatch { opacity: 0.3; }
   .compare-legend .name { font-weight: 600; color: var(--text-primary); }
-  .compare-legend .detail { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
+  .compare-legend input:not(:checked) ~ .name { color: var(--text-muted); }
+  .compare-legend .detail { color: var(--text-muted); font-family: var(--font-mono); font-size: 11.5px; }
 
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
   .tile {
@@ -377,7 +389,9 @@
   tbody tr:last-child td { border-bottom: none; }
   tbody tr:hover td { background: var(--accent-wash); color: var(--text-primary); }
 
-  .page-footer p { margin: 0; font-size: 12px; color: var(--text-muted); max-width: 64ch; }
+  .page-footer p { margin: 0; font-size: 12px; color: var(--text-muted); max-width: 66ch; }
+  .footer-link { color: var(--text-secondary); }
+  .footer-link:hover { color: var(--text-primary); }
 
   @media (max-width: 480px) {
     .page { padding-block: 28px 40px; }
@@ -403,7 +417,7 @@
         <span class="sr-only">Campaign</span>
         <select id="project-select"></select>
       </label>
-      <a id="gamefound-link" class="ghost-link" href="#" target="_blank" rel="noopener">Gamefound &#8599;</a>
+      <a id="campaign-link" class="ghost-link" href="#" target="_blank" rel="noopener">View campaign &#8599;</a>
     </div>
   </header>
 
@@ -428,7 +442,7 @@
   </section>
 
   <footer class="page-footer">
-    <p>Tend Expansions refreshes automatically from a public snapshot on S3, updated by a scheduled Lambda every 5 minutes; this page re-polls it every 60 seconds while open. Altera's campaign has concluded &mdash; its figures are a fixed snapshot from June 2026. Compare mode aligns both by percent of campaign elapsed (start to scheduled end), not by calendar date.</p>
+    <p>Tend Expansions refreshes automatically from a public snapshot on S3, updated by a scheduled Lambda every 5 minutes; this page re-polls it every 60 seconds while open. Every other campaign here is concluded &mdash; a fixed snapshot, either from our own tracker (Altera) or reconstructed from daily data published at <a class="footer-link" href="https://www.tabletopanalytics.com/creator/iv-studios-7850" target="_blank" rel="noopener">tabletopanalytics.com</a> (everything else, all originally on Kickstarter). Compare mode aligns every campaign by percent of campaign elapsed (start to scheduled end), not by calendar date.</p>
   </footer>
 </div>
 
@@ -443,21 +457,172 @@
       id: 'tend-expansions',
       label: 'Tend Expansions',
       status: 'live',
+      defaultOn: true,
       url: 'https://tend-expansions-data-fetch-alteradatabucket-ubsldl5prg3c.s3.us-east-1.amazonaws.com/tend-expansions/history.json',
       campaignStart: '2026-09-15T15:00:00Z',
       campaignEnd: '2026-10-07T22:00:00Z',
-      color: '--project-a'
+      colorVar: '--project-a',
+      platformUrl: 'https://gamefound.com/projects/tend-expansions'
     },
     {
       id: 'altera',
       label: 'Altera',
       status: 'archived',
+      defaultOn: true,
       url: 'data/altera.json',
       campaignStart: '2026-06-09T15:00:00Z',
       campaignEnd: '2026-06-30T03:55:49.957Z',
-      color: '--project-b'
+      colorVar: '--project-b',
+      platformUrl: 'https://gamefound.com/projects/altera'
+    },
+    {
+      id: 'fractured-sky-awakening-soar',
+      label: 'Fractured Sky: Awakening + Soar',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/fractured-sky-awakening-soar.json',
+      campaignStart: '2026-02-24T05:00:00+00:00',
+      campaignEnd: '2026-03-13T04:00:00+00:00',
+      color: '#cc3333',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/fractured-sky-awakening'
+    },
+    {
+      id: 'honors-end',
+      label: 'Honor\'s End',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/honors-end.json',
+      campaignStart: '2025-10-07T04:00:00+00:00',
+      campaignEnd: '2025-10-27T04:00:00+00:00',
+      color: '#cc7a33',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/honors-end'
+    },
+    {
+      id: 'realm-of-reckoning',
+      label: 'Realm of Reckoning',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/realm-of-reckoning.json',
+      campaignStart: '2025-06-24T04:00:00+00:00',
+      campaignEnd: '2025-07-09T04:00:00+00:00',
+      color: '#ccbf33',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/realm-of-reckoning'
+    },
+    {
+      id: 'scales-of-fate',
+      label: 'Scales of Fate',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/scales-of-fate.json',
+      campaignStart: '2025-03-18T04:00:00+00:00',
+      campaignEnd: '2025-04-02T04:00:00+00:00',
+      color: '#91cc33',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/scales-of-fate'
+    },
+    {
+      id: 'tend',
+      label: 'Tend',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/tend.json',
+      campaignStart: '2024-10-29T04:00:00+00:00',
+      campaignEnd: '2024-11-15T05:00:00+00:00',
+      color: '#4acc33',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/tend-0'
+    },
+    {
+      id: 'brink',
+      label: 'Brink',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/brink.json',
+      campaignStart: '2024-07-02T04:00:00+00:00',
+      campaignEnd: '2024-07-22T04:00:00+00:00',
+      color: '#33cc61',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/brink-0'
+    },
+    {
+      id: 'fractured-sky-rift',
+      label: 'Fractured Sky: Rift',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/fractured-sky-rift.json',
+      campaignStart: '2024-04-30T04:00:00+00:00',
+      campaignEnd: '2024-05-15T04:00:00+00:00',
+      color: '#33cca8',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/fractured-sky-rift'
+    },
+    {
+      id: 'veiled-fate-tribunal',
+      label: 'Veiled Fate: Tribunal',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/veiled-fate-tribunal.json',
+      campaignStart: '2024-03-12T04:00:00+00:00',
+      campaignEnd: '2024-04-02T04:00:00+00:00',
+      color: '#33a8cc',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/veiled-fate-tribunal'
+    },
+    {
+      id: 'mythic-mischief-vol-ii',
+      label: 'Mythic Mischief Vol. II',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/mythic-mischief-vol-ii.json',
+      campaignStart: '2023-09-12T04:00:00+00:00',
+      campaignEnd: '2023-10-02T04:00:00+00:00',
+      color: '#3361cc',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/mythic-mischief-vol-ii'
+    },
+    {
+      id: 'fractured-sky',
+      label: 'Fractured Sky',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/fractured-sky.json',
+      campaignStart: '2023-04-11T04:00:00+00:00',
+      campaignEnd: '2023-05-01T04:00:00+00:00',
+      color: '#4a33cc',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/fractured-sky'
+    },
+    {
+      id: 'moonrakers',
+      label: 'Moonrakers',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/moonrakers.json',
+      campaignStart: '2019-09-03T04:00:00+00:00',
+      campaignEnd: '2019-10-01T04:00:00+00:00',
+      color: '#9133cc',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/moonrakers'
+    },
+    {
+      id: 'moonrakers-titan',
+      label: 'Moonrakers: Titan',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/moonrakers-titan.json',
+      campaignStart: '2022-07-19T04:00:00+00:00',
+      campaignEnd: '2022-08-13T04:00:00+00:00',
+      color: '#cc33bf',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/moonrakers-titan'
+    },
+    {
+      id: 'veiled-fate',
+      label: 'Veiled Fate',
+      status: 'archived',
+      defaultOn: false,
+      url: 'data/veiled-fate.json',
+      campaignStart: '2020-10-15T04:00:00+00:00',
+      campaignEnd: '2020-10-31T04:00:00+00:00',
+      color: '#cc337a',
+      platformUrl: 'https://www.kickstarter.com/projects/ivstudios/veiledfate'
     }
   ];
+
+  function projectColor(project) {
+    return project.colorVar ? 'var(' + project.colorVar + ')' : project.color;
+  }
 
   function fmtInt(v) { return Math.round(v).toLocaleString('en-US'); }
   function fmtMoney(v) { return '$' + Math.round(v).toLocaleString('en-US'); }
@@ -490,7 +655,7 @@
   var projectSelect = document.getElementById('project-select');
   var selectWrap = document.getElementById('select-wrap');
   var projectTitle = document.getElementById('project-title');
-  var gamefoundLink = document.getElementById('gamefound-link');
+  var campaignLink = document.getElementById('campaign-link');
   var statusPill = document.getElementById('status-pill');
   var statusText = document.getElementById('status-text');
   var metaLine = document.getElementById('meta-line');
@@ -532,7 +697,7 @@
 
     var isSingle = mode === 'single';
     selectWrap.hidden = !isSingle;
-    gamefoundLink.hidden = !isSingle;
+    campaignLink.hidden = !isSingle;
     rawDataSection.hidden = !isSingle;
     compareLegend.hidden = isSingle;
     statusPill.hidden = !isSingle;
@@ -606,7 +771,7 @@
     var project = PROJECTS.filter(function (p) { return p.id === id; })[0] || PROJECTS[0];
     projectSelect.value = project.id;
     projectTitle.textContent = project.label;
-    gamefoundLink.href = 'https://gamefound.com/projects/' + project.id;
+    campaignLink.href = project.platformUrl || '#';
 
     var isLive = project.status === 'live';
     statusPill.className = 'status-pill' + (isLive ? ' is-live' : '');
@@ -837,35 +1002,65 @@
 
   // ---- compare view ----
 
+  var compareCache = {};
+  var compareChecked = {};
+  var compareInitialized = false;
+
   function loadCompare() {
     metaLine.textContent = 'Loading snapshots…';
     tilesEl.innerHTML = '';
     panelsEl.innerHTML = '';
 
+    if (!compareInitialized) {
+      PROJECTS.forEach(function (p) { compareChecked[p.id] = !!p.defaultOn; });
+      compareInitialized = true;
+    }
+
     Promise.all(PROJECTS.map(function (p) {
-      return fetchProjectData(p).then(function (rows) { return { project: p, rows: rows }; })
-        .catch(function () { return { project: p, rows: null }; });
-    })).then(function (results) {
-      renderCompare(results);
+      return fetchProjectData(p)
+        .then(function (rows) { compareCache[p.id] = { project: p, rows: rows }; })
+        .catch(function () { compareCache[p.id] = { project: p, rows: null }; });
+    })).then(function () {
+      renderCompareLegend();
+      renderComparePanels();
       if (mode === 'compare' && PROJECTS.some(function (p) { return p.status === 'live'; })) {
-        refreshTimer = setInterval(loadCompare, REFRESH_MS);
+        refreshTimer = setInterval(refreshCompareLive, REFRESH_MS);
       }
     });
   }
 
-  function renderCompare(results) {
-    var ok = results.filter(function (r) { return r.rows && r.rows.length; });
+  function refreshCompareLive() {
+    var live = PROJECTS.filter(function (p) { return p.status === 'live'; });
+    Promise.all(live.map(function (p) {
+      return fetchProjectData(p)
+        .then(function (rows) { compareCache[p.id] = { project: p, rows: rows }; })
+        .catch(function () {});
+    })).then(function () {
+      if (mode === 'compare') {
+        renderCompareLegend();
+        renderComparePanels();
+      }
+    });
+  }
 
-    if (!ok.length) {
-      metaLine.textContent = 'Could not load snapshot data for either campaign.';
+  function loadedProjects() {
+    return PROJECTS
+      .map(function (p) { return compareCache[p.id]; })
+      .filter(function (r) { return r && r.rows && r.rows.length; });
+  }
+
+  function renderCompareLegend() {
+    var all = loadedProjects();
+
+    if (!all.length) {
+      metaLine.textContent = 'Could not load snapshot data for any campaign.';
       compareLegend.hidden = true;
       return;
     }
 
-    metaLine.textContent = 'Aligned by percent of campaign elapsed, start to scheduled end.';
-
+    metaLine.textContent = 'Aligned by percent of campaign elapsed, start to scheduled end — toggle campaigns below.';
     compareLegend.hidden = false;
-    compareLegend.innerHTML = ok.map(function (r) {
+    compareLegend.innerHTML = all.map(function (r) {
       var start = new Date(r.project.campaignStart);
       var end = new Date(r.project.campaignEnd);
       var totalDays = (end - start) / 86400000;
@@ -873,14 +1068,36 @@
       var detail = r.project.status === 'live'
         ? ('day ' + Math.max(1, Math.ceil((r.rows[r.rows.length - 1]._date - start) / 86400000)) + ' of ' + Math.round(totalDays) + ' · ' + fmtPct(lastPct) + ' elapsed')
         : (Math.round(totalDays * 10) / 10 + '-day campaign · completed');
-      return '<li><span class="swatch" style="background:var(' + r.project.color + ')"></span>' +
-             '<span class="name">' + r.project.label + '</span>' +
-             '<span class="detail">' + detail + '</span></li>';
+      var color = projectColor(r.project);
+      var checked = compareChecked[r.project.id] ? ' checked' : '';
+      return '<li><label>' +
+               '<input type="checkbox" data-pid="' + r.project.id + '" style="accent-color:' + color + '"' + checked + '>' +
+               '<span class="swatch" style="background:' + color + '"></span>' +
+               '<span class="name">' + r.project.label + '</span>' +
+               '<span class="detail">' + detail + '</span>' +
+             '</label></li>';
     }).join('');
 
+    Array.prototype.slice.call(compareLegend.querySelectorAll('input[type="checkbox"]')).forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        compareChecked[cb.getAttribute('data-pid')] = cb.checked;
+        renderComparePanels();
+      });
+    });
+  }
+
+  function renderComparePanels() {
+    var checked = loadedProjects().filter(function (r) { return compareChecked[r.project.id]; });
     panelsEl.innerHTML = '';
+    if (!checked.length) {
+      var p = document.createElement('p');
+      p.className = 'panel-sub';
+      p.textContent = 'No campaigns selected — check one or more above.';
+      panelsEl.appendChild(p);
+      return;
+    }
     METRICS.forEach(function (metric) {
-      panelsEl.appendChild(buildComparePanel(metric, ok));
+      panelsEl.appendChild(buildComparePanel(metric, checked));
     });
   }
 
@@ -929,7 +1146,7 @@
     }).join('');
 
     var linesSvg = series.map(function (s) {
-      var color = 'var(' + s.project.color + ')';
+      var color = projectColor(s.project);
       if (s.points.length < 2) {
         var p0 = s.points[0];
         return '<circle cx="' + xScale(p0.pct).toFixed(1) + '" cy="' + yScale(p0.value).toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2" data-pid="' + s.project.id + '" />';
@@ -941,7 +1158,7 @@
     }).join('');
 
     var hoverDotsSvg = series.map(function (s) {
-      var color = 'var(' + s.project.color + ')';
+      var color = projectColor(s.project);
       return '<circle class="hover-dot" data-pid="' + s.project.id + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2" />';
     }).join('');
 
@@ -995,7 +1212,7 @@
         var dot = hoverLayer.querySelector('.hover-dot[data-pid="' + s.project.id + '"]');
         dot.setAttribute('cx', xScale(nearest.pct).toFixed(1));
         dot.setAttribute('cy', yScale(nearest.value).toFixed(1));
-        rowsHtml += '<div class="tt-row"><span class="swatch" style="background:var(' + s.project.color + ')"></span>' +
+        rowsHtml += '<div class="tt-row"><span class="swatch" style="background:' + projectColor(s.project) + '"></span>' +
                     '<span>' + s.project.label + ':</span> <span class="tt-value">' + metric.tooltip(nearest.value) + '</span></div>';
       });
       tooltip.innerHTML = rowsHtml;

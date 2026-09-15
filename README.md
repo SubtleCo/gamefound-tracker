@@ -3,7 +3,10 @@
 Tracks [Gamefound](https://gamefound.com) crowdfunding campaigns over time:
 a Lambda snapshots a campaign's public API into S3 every 5 minutes, and a
 [live dashboard](docs/index.html) (published via GitHub Pages) charts
-funding, backers, and comments as they come in.
+funding, backers, and comments as they come in. The dashboard's compare
+view can also overlay any campaign - including ones we never tracked
+ourselves, backfilled from third-party data - normalized by percent of
+campaign elapsed, with checkboxes to pick which ones to show.
 
 The stack is generic - one CloudFormation template, parameterized by
 `Project` (the Gamefound `urlName`, e.g. `tend-expansions` for
@@ -90,6 +93,33 @@ cp <project>.json docs/data/<project>.json
 Then flip its `docs/index.html` entry to `status: 'archived'` and point
 `url` at `data/<project>.json`. The stack itself can stay running or be
 torn down separately - the dashboard no longer depends on it either way.
+
+## Adding a campaign we never tracked ourselves
+
+Every campaign in `PROJECTS` besides Altera and Tend Expansions was
+never run through our own Lambda - their data comes entirely from
+[tabletopanalytics.com](https://www.tabletopanalytics.com), which embeds
+daily funds/backers/comments series right in each project's page (a
+`jquery.flot` chart, data inlined as a JS array - no API, just fetch the
+page and regex it out). Backers/comments there are daily *deltas*, not
+running totals, so they need summing into cumulative counts before they
+match our schema.
+
+Two honest limits on this data: it's **daily** resolution (vs. our own
+hourly/5-minute data), and there's **no independent way to validate
+it** the way Altera's backfill was cross-checked against our own real
+snapshots - it's trust-the-third-party-site for anything we didn't
+track ourselves. Sanity-check monotonicity (funds/backers should only
+occasionally dip, from failed pledges - a big or frequent drop means
+something's wrong) and cross-reference the final totals against the
+project's own summary stats before trusting a new one.
+
+Each entry in `PROJECTS` needs: `campaignStart`/`campaignEnd` (here,
+just the first/last data point's own timestamp - there's no Gamefound
+API to pull an authoritative campaign date from for a Kickstarter
+project), a `platformUrl` (wherever the campaign actually ran), and a
+`color` (a plain hex value works for these - `colorVar` is reserved for
+the two hand-tuned, theme-aware colors on Altera/Tend Expansions).
 
 ## Day to day
 
