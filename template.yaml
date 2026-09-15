@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  Project:
+    Type: String
+    Description: >-
+      Gamefound project urlName (the slug in gamefound.com/projects/<this>).
+      Used as the S3 key prefix and passed to the Gamefound API. One stack
+      per project - deploy with --stack-name <Project>-data-fetch.
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 30
+
+Resources:
+  # NOTE: these logical IDs keep their original "Altera" names even though the
+  # template is now generic. Renaming them would make CloudFormation replace
+  # the bucket/function on the next update to the existing altera stack. New
+  # stacks (other projects) are unaffected either way - the names are purely
+  # internal and don't affect behavior, just the auto-generated bucket name.
+  AlteraDataBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      # Only the aggregate <Project>/history.json object is made public below
+      # (via bucket policy) - everything else in the bucket, including the
+      # raw per-snapshot archive, stays private. ACLs stay blocked; the
+      # public grant is policy-based only.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: false
+        RestrictPublicBuckets: false
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: ['*']
+            AllowedMethods: [GET]
+            AllowedHeaders: ['*']
+            MaxAge: 3600
+
+  AlteraDataBucketPublicRead:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AlteraDataBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadHistory
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub '${AlteraDataBucket.Arn}/${Project}/history.json'
+
+  AlteraFetchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.handler
+      CodeUri: lambda/
+      Environment:
+        Variables:
+          BUCKET_NAME: !Ref AlteraDataBucket
+          PROJECT: !Ref Project
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: !Sub '${AlteraDataBucket.Arn}/*'
+      Events:
+        HourlySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+
+Outputs:
+  BucketName:
+    Value: !Ref AlteraDataBucket
+  Project:
+    Value: !Ref Project
+  PublicHistoryUrl:
+    Description: Public URL for the aggregate time-series JSON a static site can fetch.
+    Value: !Sub 'https://${AlteraDataBucket}.s3.${AWS::Region}.amazonaws.com/${Project}/history.json'

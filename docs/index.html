@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Campaign Telemetry</title>
+<meta name="description" content="Funding, backer, and comment trends for Gamefound crowdfunding campaigns, tracked from hourly/live API snapshots.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%93%A1%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f9f9f7;
+    --surface: #fcfcfb;
+    --surface-raised: #ffffff;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --border: rgba(11,11,11,0.10);
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --accent: #2a78d6;
+    --accent-wash: rgba(42,120,214,0.10);
+    --backers: #eb6834;
+    --backers-wash: rgba(235,104,52,0.10);
+    --comments: #1baf7a;
+    --comments-wash: rgba(27,175,122,0.10);
+    --good: #006300;
+    --critical: #d03b3b;
+    --shadow: 0 1px 2px rgba(11,11,11,0.04), 0 8px 24px rgba(11,11,11,0.05);
+
+    --font-display: "Big Shoulders Display", "Arial Narrow", sans-serif;
+    --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0d0d0d;
+      --surface: #1a1a19;
+      --surface-raised: #202020;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --border: rgba(255,255,255,0.10);
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --accent: #3987e5;
+      --accent-wash: rgba(57,135,229,0.14);
+      --backers: #d95926;
+      --backers-wash: rgba(217,89,38,0.14);
+      --comments: #199e70;
+      --comments-wash: rgba(25,158,112,0.14);
+      --good: #0ca30c;
+      --critical: #e66767;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-raised: #202020;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --border: rgba(255,255,255,0.10);
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --accent: #3987e5;
+    --accent-wash: rgba(57,135,229,0.14);
+    --backers: #d95926;
+    --backers-wash: rgba(217,89,38,0.14);
+    --comments: #199e70;
+    --comments-wash: rgba(25,158,112,0.14);
+    --good: #0ca30c;
+    --critical: #e66767;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.35);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { background: var(--bg); }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .page {
+    max-width: 1080px;
+    margin-inline: auto;
+    padding-inline: 20px;
+    padding-block: 40px 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+  }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  .masthead {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+  }
+  .eyebrow {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .title-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  #project-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(2.1rem, 5vw, 3.4rem);
+    line-height: 0.94;
+    letter-spacing: 0.01em;
+    text-wrap: balance;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 5px 11px 5px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .status-pill .pulse-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--text-muted); }
+  .status-pill.is-live .pulse-dot { background: var(--good); animation: pulse 1.7s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .status-pill.is-live .pulse-dot { animation: none; }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+
+  .masthead-controls { display: flex; align-items: center; gap: 10px; }
+  .select-wrap select {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 12px;
+    cursor: pointer;
+  }
+  .ghost-link {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 14px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+    white-space: nowrap;
+  }
+  .ghost-link:hover { color: var(--text-primary); border-color: var(--text-muted); background: var(--accent-wash); }
+
+  .meta-line {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 20px 18px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tile-label, .panel-head h3 {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .panel-head h3 { font-size: 13px; letter-spacing: 0.06em; color: var(--text-secondary); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .tile-value {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: clamp(1.5rem, 3vw, 1.85rem);
+  }
+  .tile-delta { display: flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; flex-wrap: wrap; }
+  .tile-delta.is-good { color: var(--good); }
+  .tile-delta.is-bad { color: var(--critical); }
+  .tile-delta-note { color: var(--text-muted); font-weight: 500; }
+  .tile-spark { width: 100%; height: 32px; display: block; }
+
+  .panels { display: flex; flex-direction: column; gap: 16px; }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 20px 14px;
+    box-shadow: var(--shadow);
+  }
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .panel-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--text-muted); }
+  .panel-value { font-family: var(--font-mono); font-weight: 600; font-size: 1.3rem; white-space: nowrap; }
+
+  .chart-wrap { position: relative; }
+  .chart-wrap svg { display: block; width: 100%; height: auto; }
+  .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .baseline { stroke: var(--axis); stroke-width: 1; }
+  .axis-label { font-family: var(--font-mono); font-size: 10px; fill: var(--text-muted); text-anchor: start; }
+  .axis-label-x { text-anchor: middle; }
+  .crosshair { stroke: var(--axis); stroke-width: 1; stroke-dasharray: 3,3; }
+  .hover-layer { transition: opacity .1s ease; }
+  .hover-target { fill: transparent; touch-action: none; }
+
+  .chart-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.4;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    transition: opacity .1s ease;
+    white-space: nowrap;
+    z-index: 5;
+  }
+  .chart-tooltip.is-visible { opacity: 1; }
+  .chart-tooltip .tt-date { color: var(--text-muted); font-size: 11px; margin-bottom: 2px; }
+  .chart-tooltip .tt-value { color: var(--text-primary); font-weight: 600; }
+
+  .raw-data { display: flex; flex-direction: column; align-items: flex-start; }
+  .ghost-btn {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 9px 14px;
+    cursor: pointer;
+    transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+  }
+  .ghost-btn:hover { color: var(--text-primary); border-color: var(--text-muted); background: var(--accent-wash); }
+
+  .table-wrap {
+    margin-top: 14px;
+    width: 100%;
+    max-height: 420px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  table#data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    text-align: right;
+    padding: 8px 12px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+  }
+  thead th:first-child, tbody td:first-child { text-align: left; }
+  tbody td { padding: 6px 12px; text-align: right; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--accent-wash); color: var(--text-primary); }
+
+  .page-footer p { margin: 0; font-size: 12px; color: var(--text-muted); max-width: 64ch; }
+
+  @media (max-width: 480px) {
+    .page { padding-block: 28px 40px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">Gamefound campaign tracker</p>
+      <div class="title-row">
+        <h1 id="project-title">&nbsp;</h1>
+        <span class="status-pill" id="status-pill"><span class="pulse-dot" aria-hidden="true"></span><span id="status-text"></span></span>
+      </div>
+    </div>
+    <div class="masthead-controls">
+      <label class="select-wrap">
+        <span class="sr-only">Campaign</span>
+        <select id="project-select"></select>
+      </label>
+      <a id="gamefound-link" class="ghost-link" href="#" target="_blank" rel="noopener">Gamefound &#8599;</a>
+    </div>
+  </header>
+
+  <p class="meta-line" id="meta-line">Loading snapshots&hellip;</p>
+
+  <section class="tiles" id="tiles" aria-label="Current totals"></section>
+
+  <section class="panels" id="panels" aria-label="Trends over time"></section>
+
+  <section class="raw-data">
+    <button type="button" id="toggle-table" class="ghost-btn" aria-expanded="false">View raw snapshots</button>
+    <div class="table-wrap" id="table-wrap" hidden>
+      <table id="data-table">
+        <caption class="sr-only">Raw snapshots</caption>
+        <thead>
+          <tr><th>Snapshot (UTC)</th><th>Funds</th><th>Backers</th><th>Comments</th></tr>
+        </thead>
+        <tbody id="data-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="page-footer">
+    <p>Tend Expansions refreshes automatically from a public snapshot on S3, updated by a scheduled Lambda every 5 minutes; this page re-polls it every 60 seconds while open. Altera's campaign has concluded &mdash; its figures are a fixed snapshot from June 2026.</p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var REFRESH_MS = 60000;
+
+  var PROJECTS = [
+    {
+      id: 'tend-expansions',
+      label: 'Tend Expansions',
+      status: 'live',
+      url: 'https://tend-expansions-data-fetch-alteradatabucket-ubsldl5prg3c.s3.us-east-1.amazonaws.com/tend-expansions/history.json'
+    },
+    {
+      id: 'altera',
+      label: 'Altera',
+      status: 'archived',
+      url: 'data/altera.json'
+    }
+  ];
+
+  function fmtInt(v) { return Math.round(v).toLocaleString('en-US'); }
+  function fmtMoney(v) { return '$' + Math.round(v).toLocaleString('en-US'); }
+  function fmtMoneyCompact(v) {
+    var a = Math.abs(v);
+    if (a >= 1000000) return '$' + (v / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (a >= 1000) return '$' + (v / 1000).toFixed(0) + 'K';
+    return '$' + Math.round(v);
+  }
+  function fmtIntCompact(v) {
+    var a = Math.abs(v);
+    if (a >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    return String(Math.round(v));
+  }
+
+  var dayFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  var fullFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' });
+  var tableFmt = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' });
+
+  var METRICS = [
+    { key: 'fundsGathered', label: 'Funds gathered', colorVar: '--accent', washVar: '--accent-wash', hero: fmtMoney, axis: fmtMoneyCompact, tooltip: fmtMoney },
+    { key: 'backerCount', label: 'Backers', colorVar: '--backers', washVar: '--backers-wash', hero: fmtInt, axis: fmtIntCompact, tooltip: fmtInt },
+    { key: 'commentCount', label: 'Comments', colorVar: '--comments', washVar: '--comments-wash', hero: fmtInt, axis: fmtIntCompact, tooltip: fmtInt }
+  ];
+
+  var projectSelect = document.getElementById('project-select');
+  var projectTitle = document.getElementById('project-title');
+  var gamefoundLink = document.getElementById('gamefound-link');
+  var statusPill = document.getElementById('status-pill');
+  var statusText = document.getElementById('status-text');
+  var metaLine = document.getElementById('meta-line');
+  var tilesEl = document.getElementById('tiles');
+  var panelsEl = document.getElementById('panels');
+  var tbody = document.getElementById('data-tbody');
+  var toggleBtn = document.getElementById('toggle-table');
+  var tableWrap = document.getElementById('table-wrap');
+
+  var refreshTimer = null;
+
+  PROJECTS.forEach(function (p) {
+    var opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.label;
+    projectSelect.appendChild(opt);
+  });
+
+  projectSelect.addEventListener('change', function () { loadProject(projectSelect.value); });
+
+  toggleBtn.addEventListener('click', function () {
+    var willShow = tableWrap.hidden;
+    tableWrap.hidden = !willShow;
+    toggleBtn.setAttribute('aria-expanded', String(willShow));
+    toggleBtn.textContent = willShow ? 'Hide raw snapshots' : 'View raw snapshots';
+  });
+
+  function niceTicks(min, max, count) {
+    if (min === max) { min -= 1; max += 1; }
+    var range = max - min;
+    var rawStep = range / count;
+    var mag = Math.pow(10, Math.floor(Math.log(rawStep) / Math.LN10));
+    var norm = rawStep / mag;
+    var step;
+    if (norm < 1.5) step = mag;
+    else if (norm < 3) step = 2 * mag;
+    else if (norm < 7) step = 5 * mag;
+    else step = 10 * mag;
+    var niceMin = Math.floor(min / step) * step;
+    var niceMax = Math.ceil(max / step) * step;
+    var ticks = [];
+    for (var t = niceMin; t <= niceMax + step / 2; t += step) ticks.push(t);
+    return { min: niceMin, max: niceMax, ticks: ticks };
+  }
+
+  function downsample(values, count) {
+    if (values.length <= count) return values.slice();
+    var out = [];
+    for (var i = 0; i < count; i++) {
+      var idx = Math.round((i * (values.length - 1)) / (count - 1));
+      out.push(values[idx]);
+    }
+    return out;
+  }
+
+  function sparklinePath(values, w, h) {
+    var min = Math.min.apply(null, values);
+    var max = Math.max.apply(null, values);
+    var range = max - min || 1;
+    var pad = 3;
+    var innerH = h - pad * 2;
+    return values.map(function (v, i) {
+      var x = values.length === 1 ? 0 : (i / (values.length - 1)) * w;
+      var y = pad + innerH - ((v - min) / range) * innerH;
+      return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+  }
+
+  function loadProject(id) {
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+
+    var project = PROJECTS.filter(function (p) { return p.id === id; })[0] || PROJECTS[0];
+    projectSelect.value = project.id;
+    projectTitle.textContent = project.label;
+    gamefoundLink.href = 'https://gamefound.com/projects/' + project.id;
+
+    var isLive = project.status === 'live';
+    statusPill.className = 'status-pill' + (isLive ? ' is-live' : '');
+    statusText.textContent = isLive ? 'Live' : 'Archived';
+
+    fetchAndRender(project);
+
+    if (isLive) {
+      refreshTimer = setInterval(function () { fetchAndRender(project); }, REFRESH_MS);
+    }
+  }
+
+  function fetchAndRender(project) {
+    fetch(project.url, { cache: 'no-store' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (rows) {
+        rows.forEach(function (r) { r._date = new Date(r.datetime); });
+        rows.sort(function (a, b) { return a._date - b._date; });
+        render(rows);
+      })
+      .catch(function (err) {
+        metaLine.textContent = 'Could not load snapshot data for this campaign.';
+        tilesEl.innerHTML = '';
+        panelsEl.innerHTML = '';
+        console.error(err);
+      });
+  }
+
+  function render(rows) {
+    if (!rows.length) {
+      metaLine.textContent = 'No snapshots yet — check back once the tracker has run a few times.';
+      tilesEl.innerHTML = '';
+      panelsEl.innerHTML = '';
+      tbody.innerHTML = '';
+      return;
+    }
+
+    var first = rows[0];
+    var last = rows[rows.length - 1];
+    metaLine.textContent =
+      'Tracking since ' + dayFmt.format(first._date) +
+      ' · last snapshot ' + fullFmt.format(last._date) + ' UTC' +
+      ' · ' + rows.length.toLocaleString('en-US') + ' snapshot' + (rows.length === 1 ? '' : 's');
+
+    tilesEl.innerHTML = '';
+    panelsEl.innerHTML = '';
+
+    METRICS.forEach(function (metric) {
+      var values = rows.map(function (r) { return r[metric.key]; });
+      var delta = last[metric.key] - first[metric.key];
+      tilesEl.appendChild(buildTile(metric, values, delta, first._date));
+      panelsEl.appendChild(buildPanel(metric, rows, values, delta, first._date));
+    });
+
+    tbody.innerHTML = '';
+    var frag = document.createDocumentFragment();
+    for (var i = rows.length - 1; i >= 0; i--) {
+      var r = rows[i];
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + tableFmt.format(r._date) + '</td>' +
+        '<td>' + fmtMoney(r.fundsGathered) + '</td>' +
+        '<td>' + fmtInt(r.backerCount) + '</td>' +
+        '<td>' + fmtInt(r.commentCount) + '</td>';
+      frag.appendChild(tr);
+    }
+    tbody.appendChild(frag);
+  }
+
+  function buildTile(metric, values, delta, firstDate) {
+    var tile = document.createElement('div');
+    tile.className = 'tile';
+    var lastVal = values[values.length - 1];
+    var isGood = delta >= 0;
+    var color = 'var(' + metric.colorVar + ')';
+    var sparkPath = sparklinePath(downsample(values, 16), 120, 32);
+
+    tile.innerHTML =
+      '<p class="tile-label"><span class="dot" style="background:' + color + '"></span>' + metric.label + '</p>' +
+      '<p class="tile-value">' + metric.hero(lastVal) + '</p>' +
+      '<div class="tile-delta ' + (isGood ? 'is-good' : 'is-bad') + '">' +
+        '<span aria-hidden="true">' + (isGood ? '▲' : '▼') + '</span>' +
+        '<span>' + (isGood ? '+' : '−') + metric.hero(Math.abs(delta)) + '</span>' +
+        '<span class="tile-delta-note">since ' + dayFmt.format(firstDate) + '</span>' +
+      '</div>' +
+      '<svg class="tile-spark" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true">' +
+        '<path d="' + sparkPath + '" fill="none" stroke="' + color + '" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />' +
+      '</svg>';
+    return tile;
+  }
+
+  function buildPanel(metric, rows, values, delta, firstDate) {
+    var panel = document.createElement('div');
+    panel.className = 'panel';
+    var lastVal = values[values.length - 1];
+    var isGood = delta >= 0;
+    var color = 'var(' + metric.colorVar + ')';
+    var wash = 'var(' + metric.washVar + ')';
+
+    var head = document.createElement('div');
+    head.className = 'panel-head';
+    head.innerHTML =
+      '<div>' +
+        '<h3><span class="dot" style="background:' + color + '"></span>' + metric.label + '</h3>' +
+        '<p class="panel-sub">' + (isGood ? '+' : '−') + metric.hero(Math.abs(delta)) + ' since ' + dayFmt.format(firstDate) + '</p>' +
+      '</div>' +
+      '<div class="panel-value" style="color:' + color + '">' + metric.hero(lastVal) + '</div>';
+    panel.appendChild(head);
+
+    var chartWrap = document.createElement('div');
+    chartWrap.className = 'chart-wrap';
+
+    if (rows.length < 2) {
+      var placeholder = document.createElement('p');
+      placeholder.className = 'panel-sub';
+      placeholder.style.padding = '28px 0 8px';
+      placeholder.textContent = 'Waiting on more snapshots to plot a trend.';
+      chartWrap.appendChild(placeholder);
+      panel.appendChild(chartWrap);
+      return panel;
+    }
+
+    var W = 960, H = 260;
+    var marginLeft = 54, marginRight = 16, marginTop = 16, marginBottom = 26;
+    var minDate = rows[0]._date.getTime();
+    var maxDate = rows[rows.length - 1]._date.getTime();
+    var vmin = Math.min.apply(null, values);
+    var vmax = Math.max.apply(null, values);
+    var yt = niceTicks(vmin, vmax, 4);
+
+    function xScale(t) {
+      if (maxDate === minDate) return marginLeft;
+      return marginLeft + ((t - minDate) / (maxDate - minDate)) * (W - marginLeft - marginRight);
+    }
+    function yScale(v) {
+      return H - marginBottom - ((v - yt.min) / (yt.max - yt.min || 1)) * (H - marginTop - marginBottom);
+    }
+
+    var linePts = rows.map(function (r, i) { return xScale(r._date.getTime()).toFixed(1) + ',' + yScale(values[i]).toFixed(1); });
+    var lineD = 'M' + linePts.join(' L');
+    var baselineY = H - marginBottom;
+    var areaD = lineD + ' L' + xScale(maxDate).toFixed(1) + ',' + baselineY + ' L' + xScale(minDate).toFixed(1) + ',' + baselineY + ' Z';
+
+    var gridSvg = yt.ticks.map(function (tv) {
+      var y = yScale(tv);
+      return '<line class="grid-line" x1="' + marginLeft + '" x2="' + (W - marginRight) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" />' +
+             '<text class="axis-label" x="8" y="' + (y + 3.5).toFixed(1) + '">' + metric.axis(tv) + '</text>';
+    }).join('');
+
+    var xTickCount = Math.min(6, rows.length);
+    var xTicksSvg = '';
+    for (var i = 0; i < xTickCount; i++) {
+      var idx = xTickCount === 1 ? 0 : Math.round((i * (rows.length - 1)) / (xTickCount - 1));
+      var x = xScale(rows[idx]._date.getTime());
+      xTicksSvg += '<text class="axis-label axis-label-x" x="' + x.toFixed(1) + '" y="' + (H - 6) + '">' + dayFmt.format(rows[idx]._date) + '</text>';
+    }
+
+    var lastX = xScale(maxDate);
+    var lastY = yScale(lastVal);
+
+    chartWrap.innerHTML =
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + metric.label + ' over time">' +
+        '<line class="baseline" x1="' + marginLeft + '" x2="' + (W - marginRight) + '" y1="' + baselineY + '" y2="' + baselineY + '" />' +
+        gridSvg +
+        xTicksSvg +
+        '<path d="' + areaD + '" fill="' + wash + '" stroke="none" />' +
+        '<path d="' + lineD + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />' +
+        '<circle cx="' + lastX.toFixed(1) + '" cy="' + lastY.toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2" />' +
+        '<g class="hover-layer" style="opacity:0">' +
+          '<line class="crosshair" x1="0" x2="0" y1="' + marginTop + '" y2="' + baselineY + '" />' +
+          '<circle class="hover-dot" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2" />' +
+        '</g>' +
+        '<rect class="hover-target" x="' + marginLeft + '" y="0" width="' + (W - marginLeft - marginRight) + '" height="' + H + '" />' +
+      '</svg>' +
+      '<div class="chart-tooltip"><div class="tt-date"></div><div class="tt-value"></div></div>';
+
+    panel.appendChild(chartWrap);
+
+    var svg = chartWrap.querySelector('svg');
+    var hoverLayer = chartWrap.querySelector('.hover-layer');
+    var crosshair = chartWrap.querySelector('.crosshair');
+    var hoverDot = chartWrap.querySelector('.hover-dot');
+    var hoverTarget = chartWrap.querySelector('.hover-target');
+    var tooltip = chartWrap.querySelector('.chart-tooltip');
+    var ttDate = tooltip.querySelector('.tt-date');
+    var ttValue = tooltip.querySelector('.tt-value');
+
+    function pointerMove(evt) {
+      var rect = svg.getBoundingClientRect();
+      if (!rect.width) return;
+      var scaleX = W / rect.width;
+      var clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+      var localX = (clientX - rect.left) * scaleX;
+      var clamped = Math.min(Math.max(localX, marginLeft), W - marginRight);
+      var frac = (clamped - marginLeft) / (W - marginLeft - marginRight);
+      var idx = Math.round(frac * (rows.length - 1));
+      idx = Math.min(Math.max(idx, 0), rows.length - 1);
+
+      var px = xScale(rows[idx]._date.getTime());
+      var py = yScale(values[idx]);
+
+      crosshair.setAttribute('x1', px.toFixed(1));
+      crosshair.setAttribute('x2', px.toFixed(1));
+      hoverDot.setAttribute('cx', px.toFixed(1));
+      hoverDot.setAttribute('cy', py.toFixed(1));
+      hoverLayer.style.opacity = '1';
+
+      ttDate.textContent = fullFmt.format(rows[idx]._date) + ' UTC';
+      ttValue.textContent = metric.tooltip(values[idx]);
+
+      var containerRect = chartWrap.getBoundingClientRect();
+      var ttX = (px / W) * containerRect.width;
+      var ttY = (py / H) * containerRect.height;
+      var left = ttX + 14;
+      if (left + 150 > containerRect.width) left = ttX - 150 - 14;
+      tooltip.style.left = Math.max(0, left) + 'px';
+      tooltip.style.top = Math.max(0, ttY - 44) + 'px';
+      tooltip.classList.add('is-visible');
+    }
+
+    function pointerLeave() {
+      hoverLayer.style.opacity = '0';
+      tooltip.classList.remove('is-visible');
+    }
+
+    hoverTarget.addEventListener('pointermove', pointerMove);
+    hoverTarget.addEventListener('pointerleave', pointerLeave);
+    hoverTarget.addEventListener('touchmove', function (e) { pointerMove(e); e.preventDefault(); }, { passive: false });
+    hoverTarget.addEventListener('touchend', pointerLeave);
+
+    return panel;
+  }
+
+  loadProject(PROJECTS[0].id);
+})();
+</script>
+</body>
+</html>
