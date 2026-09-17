@@ -1014,8 +1014,11 @@
     return (Math.round(day * 10) / 10) + ' day' + (day >= 1.95 ? 's' : '');
   }
 
-  function dayNumberOf(date, campaignStart) {
-    return Math.max(1, Math.floor((date.getTime() - campaignStart.getTime()) / 86400000) + 1);
+  function dateKey(date) {
+    return date.getUTCFullYear() + '-' + String(date.getUTCMonth() + 1).padStart(2, '0') + '-' + String(date.getUTCDate()).padStart(2, '0');
+  }
+  function startOfUTCDay(date) {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   }
 
   function buildVelocityPanel(rows, project) {
@@ -1053,17 +1056,21 @@
       });
     }
 
-    var campaignStart = new Date(project.campaignStart);
-    var lastDataDay = dayNumberOf(deltas[deltas.length - 1].date, campaignStart);
-    var todayDay = null;
+    var firstDay = startOfUTCDay(rows[0]._date);
+    var lastDataDayStart = startOfUTCDay(deltas[deltas.length - 1].date);
+    var todayKey = null;
+    var lastDayStart = lastDataDayStart;
     if (project.status === 'live') {
-      todayDay = dayNumberOf(new Date(), campaignStart);
+      var todayStart = startOfUTCDay(new Date());
+      todayKey = dateKey(todayStart);
+      if (todayStart > lastDayStart) lastDayStart = todayStart;
     }
-    var maxDay = Math.max(lastDataDay, todayDay || 1);
 
     var optionsHtml = '<option value="all">Whole campaign</option>';
-    for (var d = 1; d <= maxDay; d++) {
-      optionsHtml += '<option value="' + d + '">Day ' + d + (d === todayDay ? ' (Today)' : '') + '</option>';
+    for (var t = firstDay.getTime(); t <= lastDayStart.getTime(); t += 86400000) {
+      var optDate = new Date(t);
+      var key = dateKey(optDate);
+      optionsHtml += '<option value="' + key + '">' + dayFmt.format(optDate) + (key === todayKey ? ' (Today)' : '') + '</option>';
     }
 
     head.innerHTML =
@@ -1085,7 +1092,7 @@
     function renderChart(filter) {
       var filtered = filter === 'all'
         ? deltas
-        : deltas.filter(function (d) { return dayNumberOf(d.date, campaignStart) === Number(filter); });
+        : deltas.filter(function (d) { return dateKey(d.date) === filter; });
 
       if (!filtered.length) {
         valueEl.textContent = '—';
