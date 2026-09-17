@@ -309,6 +309,22 @@
   .panel-value { font-family: var(--font-mono); font-weight: 600; font-size: 1.3rem; white-space: nowrap; }
   .panel-head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
   .panel-head-right .select-wrap select { font-size: 12px; padding: 6px 10px; }
+  .controls-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .smooth-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+  .smooth-toggle input { width: 13px; height: 13px; margin: 0; cursor: pointer; accent-color: var(--accent); }
 
   .chart-wrap { position: relative; }
   .chart-wrap svg { display: block; width: 100%; height: auto; }
@@ -1021,6 +1037,63 @@
     return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   }
 
+  function computeDeltas(rows, granularityMinutes) {
+    var bucketMs = granularityMinutes * 60000;
+    var order = [];
+    var byKey = {};
+    rows.forEach(function (r) {
+      var key = Math.floor(r._date.getTime() / bucketMs);
+      if (!byKey[key]) {
+        byKey[key] = { date: r._date, fundsGathered: r.fundsGathered };
+        order.push(key);
+      } else if (r._date > byKey[key].date) {
+        byKey[key] = { date: r._date, fundsGathered: r.fundsGathered };
+      }
+    });
+    order.sort(function (a, b) { return a - b; });
+    var deltas = [];
+    for (var i = 1; i < order.length; i++) {
+      var prev = byKey[order[i - 1]];
+      var curr = byKey[order[i]];
+      deltas.push({
+        date: curr.date,
+        value: curr.fundsGathered - prev.fundsGathered,
+        gapMs: curr.date.getTime() - prev.date.getTime()
+      });
+    }
+    return deltas;
+  }
+
+  // Monotone-safe Hermite spline: tangents flatten to 0 at local extrema so the
+  // curve never overshoots past a real point into a peak/dip that didn't happen.
+  function smoothPathD(pts) {
+    var n = pts.length;
+    if (n < 2) return '';
+    if (n === 2) {
+      return 'M' + pts[0].x.toFixed(1) + ',' + pts[0].y.toFixed(1) + ' L' + pts[1].x.toFixed(1) + ',' + pts[1].y.toFixed(1);
+    }
+    var tangents = new Array(n);
+    for (var i = 0; i < n; i++) {
+      if (i === 0) {
+        tangents[i] = (pts[1].y - pts[0].y) / (pts[1].x - pts[0].x);
+      } else if (i === n - 1) {
+        tangents[i] = (pts[n - 1].y - pts[n - 2].y) / (pts[n - 1].x - pts[n - 2].x);
+      } else {
+        var prev = pts[i - 1], curr = pts[i], next = pts[i + 1];
+        tangents[i] = (curr.y - prev.y) * (next.y - curr.y) <= 0 ? 0 : (next.y - prev.y) / (next.x - prev.x);
+      }
+    }
+    var d = 'M' + pts[0].x.toFixed(1) + ',' + pts[0].y.toFixed(1);
+    for (var j = 0; j < n - 1; j++) {
+      var p0 = pts[j], p1 = pts[j + 1];
+      var dx = (p1.x - p0.x) / 3;
+      var cp1x = p0.x + dx, cp1y = p0.y + tangents[j] * dx;
+      var cp2x = p1.x - dx, cp2y = p1.y - tangents[j + 1] * dx;
+      d += ' C' + cp1x.toFixed(1) + ',' + cp1y.toFixed(1) + ' ' + cp2x.toFixed(1) + ',' + cp2y.toFixed(1) + ' ' + p1.x.toFixed(1) + ',' + p1.y.toFixed(1);
+    }
+    return d;
+  }
+
   function buildVelocityPanel(rows, project) {
     var panel = document.createElement('div');
     panel.className = 'panel';
@@ -1047,17 +1120,8 @@
       return panel;
     }
 
-    var deltas = [];
-    for (var i = 1; i < rows.length; i++) {
-      deltas.push({
-        date: rows[i]._date,
-        value: rows[i].fundsGathered - rows[i - 1].fundsGathered,
-        gapMs: rows[i]._date.getTime() - rows[i - 1]._date.getTime()
-      });
-    }
-
     var firstDay = startOfUTCDay(rows[0]._date);
-    var lastDataDayStart = startOfUTCDay(deltas[deltas.length - 1].date);
+    var lastDataDayStart = startOfUTCDay(rows[rows.length - 1]._date);
     var todayKey = null;
     var lastDayStart = lastDataDayStart;
     if (project.status === 'live') {
@@ -1066,11 +1130,11 @@
       if (todayStart > lastDayStart) lastDayStart = todayStart;
     }
 
-    var optionsHtml = '<option value="all">Whole campaign</option>';
+    var dayOptionsHtml = '<option value="all">Whole campaign</option>';
     for (var t = firstDay.getTime(); t <= lastDayStart.getTime(); t += 86400000) {
       var optDate = new Date(t);
       var key = dateKey(optDate);
-      optionsHtml += '<option value="' + key + '">' + dayFmt.format(optDate) + (key === todayKey ? ' (Today)' : '') + '</option>';
+      dayOptionsHtml += '<option value="' + key + '">' + dayFmt.format(optDate) + (key === todayKey ? ' (Today)' : '') + '</option>';
     }
 
     head.innerHTML =
@@ -1080,16 +1144,33 @@
       '</div>' +
       '<div class="panel-head-right">' +
         '<div class="panel-value" id="' + uid + '-value" style="color:' + color + '"></div>' +
-        '<label class="select-wrap"><span class="sr-only">Day</span><select id="' + uid + '-select">' + optionsHtml + '</select></label>' +
+        '<div class="controls-row">' +
+          '<label class="select-wrap"><span class="sr-only">Day</span><select id="' + uid + '-day">' + dayOptionsHtml + '</select></label>' +
+          '<label class="select-wrap"><span class="sr-only">Interval</span><select id="' + uid + '-granularity">' +
+            '<option value="5">5 min</option>' +
+            '<option value="30" selected>30 min</option>' +
+            '<option value="60">60 min</option>' +
+          '</select></label>' +
+          '<label class="smooth-toggle"><input type="checkbox" id="' + uid + '-smooth">Smooth</label>' +
+        '</div>' +
       '</div>';
     panel.appendChild(head);
     panel.appendChild(chartWrap);
 
     var valueEl = head.querySelector('#' + uid + '-value');
-    var daySelect = head.querySelector('#' + uid + '-select');
-    daySelect.addEventListener('change', function () { renderChart(daySelect.value); });
+    var daySelect = head.querySelector('#' + uid + '-day');
+    var granularitySelect = head.querySelector('#' + uid + '-granularity');
+    var smoothCheckbox = head.querySelector('#' + uid + '-smooth');
 
-    function renderChart(filter) {
+    function rerender() {
+      renderChart(daySelect.value, Number(granularitySelect.value), smoothCheckbox.checked);
+    }
+    daySelect.addEventListener('change', rerender);
+    granularitySelect.addEventListener('change', rerender);
+    smoothCheckbox.addEventListener('change', rerender);
+
+    function renderChart(filter, granularityMinutes, smooth) {
+      var deltas = computeDeltas(rows, granularityMinutes);
       var filtered = filter === 'all'
         ? deltas
         : deltas.filter(function (d) { return dateKey(d.date) === filter; });
@@ -1129,8 +1210,10 @@
 
       var zeroY = yScale(0);
 
-      var linePts = filtered.map(function (d) { return xScale(d.date.getTime()).toFixed(1) + ',' + yScale(d.value).toFixed(1); });
-      var lineD = filtered.length > 1 ? 'M' + linePts.join(' L') : '';
+      var screenPts = filtered.map(function (d) { return { x: xScale(d.date.getTime()), y: yScale(d.value) }; });
+      var lineD = screenPts.length < 2 ? '' : smooth
+        ? smoothPathD(screenPts)
+        : 'M' + screenPts.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' L');
 
       var gridSvg = yt.ticks.map(function (tv) {
         var y = yScale(tv);
@@ -1220,7 +1303,7 @@
       hoverTarget.addEventListener('touchend', pointerLeave);
     }
 
-    renderChart('all');
+    rerender();
 
     return panel;
   }
