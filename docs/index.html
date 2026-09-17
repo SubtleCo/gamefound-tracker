@@ -190,6 +190,30 @@
   .mode-btn:hover { color: var(--text-primary); }
   .mode-btn.is-active { background: var(--accent); color: #fff; }
 
+  .day-mode-toggle {
+    display: inline-flex;
+    padding: 2px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    gap: 2px;
+  }
+  .day-mode-btn {
+    font-family: var(--font-sans);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: 999px;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: color .15s ease, background-color .15s ease;
+  }
+  .day-mode-btn:hover { color: var(--text-primary); }
+  .day-mode-btn.is-active { background: var(--accent); color: #fff; }
+  .vs-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+
   .select-wrap select {
     font-family: var(--font-sans);
     font-size: 13px;
@@ -1075,6 +1099,14 @@
     var h12 = h % 12 || 12;
     return h12 + (h >= 12 ? 'pm' : 'am');
   }
+  // Formats a raw "hours since local midnight" number (0-24, possibly fractional) -
+  // used for synthetic axis positions in the day-vs-day compare chart, where there's
+  // no real Date/timezone to format, just an offset within an already-zoned day.
+  function hourTickLabel(hours) {
+    var hh = ((Math.round(hours) % 24) + 24) % 24;
+    var h12 = hh % 12 || 12;
+    return h12 + (hh >= 12 ? 'pm' : 'am');
+  }
   function formatZonedDay(date, timeZone) {
     return new Intl.DateTimeFormat('en-US', { timeZone: timeZone, month: 'short', day: 'numeric' }).format(date);
   }
@@ -1179,8 +1211,20 @@
       '</div>' +
       '<div class="panel-head-right">' +
         '<div class="panel-value" id="' + uid + '-value" style="color:' + color + '"></div>' +
-        '<div class="controls-row">' +
+        '<ul class="compare-legend" id="' + uid + '-summary" hidden></ul>' +
+        '<div class="day-mode-toggle" role="group" aria-label="Day view">' +
+          '<button type="button" class="day-mode-btn is-active" data-mode="single">Single day</button>' +
+          '<button type="button" class="day-mode-btn" data-mode="compare">Compare days</button>' +
+        '</div>' +
+        '<div class="controls-row" id="' + uid + '-single-controls">' +
           '<label class="select-wrap"><span class="sr-only">Day</span><select id="' + uid + '-day"></select></label>' +
+        '</div>' +
+        '<div class="controls-row" id="' + uid + '-compare-controls" hidden>' +
+          '<label class="select-wrap"><span class="sr-only">First day</span><select id="' + uid + '-dayA"></select></label>' +
+          '<span class="vs-label">vs</span>' +
+          '<label class="select-wrap"><span class="sr-only">Second day</span><select id="' + uid + '-dayB"></select></label>' +
+        '</div>' +
+        '<div class="controls-row">' +
           '<label class="select-wrap"><span class="sr-only">Timezone</span><select id="' + uid + '-tz">' + tzOptionsHtml + '</select></label>' +
           '<label class="select-wrap"><span class="sr-only">Interval</span><select id="' + uid + '-granularity">' +
             '<option value="5">5 min</option>' +
@@ -1193,14 +1237,20 @@
     panel.appendChild(head);
     panel.appendChild(chartWrap);
 
+    var mode = 'single';
+    var modeButtons = Array.prototype.slice.call(head.querySelectorAll('.day-mode-btn'));
     var valueEl = head.querySelector('#' + uid + '-value');
+    var summaryEl = head.querySelector('#' + uid + '-summary');
+    var singleControls = head.querySelector('#' + uid + '-single-controls');
+    var compareControls = head.querySelector('#' + uid + '-compare-controls');
     var daySelect = head.querySelector('#' + uid + '-day');
+    var dayASelect = head.querySelector('#' + uid + '-dayA');
+    var dayBSelect = head.querySelector('#' + uid + '-dayB');
     var tzSelect = head.querySelector('#' + uid + '-tz');
     var granularitySelect = head.querySelector('#' + uid + '-granularity');
     var smoothCheckbox = head.querySelector('#' + uid + '-smooth');
 
-    function buildDayOptions() {
-      var tz = tzSelect.value;
+    function dayList(tz) {
       var firstDay = zonedStartOfDay(rows[0]._date, tz);
       var lastDataDayStart = zonedStartOfDay(rows[rows.length - 1]._date, tz);
       var todayKey = null;
@@ -1210,20 +1260,58 @@
         todayKey = zonedDateKey(todayStart, tz);
         if (todayStart > lastDayStart) lastDayStart = todayStart;
       }
-
-      var html = '<option value="all">Whole campaign</option>';
+      var list = [];
       for (var t = firstDay.getTime(); t <= lastDayStart.getTime(); t += 86400000) {
         var optDate = new Date(t);
         var key = zonedDateKey(optDate, tz);
-        html += '<option value="' + key + '">' + formatZonedDay(optDate, tz) + (key === todayKey ? ' (Today)' : '') + '</option>';
+        list.push({ key: key, label: formatZonedDay(optDate, tz) + (key === todayKey ? ' (Today)' : '') });
       }
-      daySelect.innerHTML = html;
+      return list;
+    }
+
+    function buildDayOptions() {
+      var tz = tzSelect.value;
+      var list = dayList(tz);
+      var optsHtml = list.map(function (d) { return '<option value="' + d.key + '">' + d.label + '</option>'; }).join('');
+
+      daySelect.innerHTML = '<option value="all">Whole campaign</option>' + optsHtml;
+      dayASelect.innerHTML = optsHtml;
+      dayBSelect.innerHTML = optsHtml;
+
+      // Default: today vs. yesterday (the two most recent days with data).
+      if (list.length) {
+        dayASelect.value = list[list.length - 1].key;
+        dayBSelect.value = list[Math.max(0, list.length - 2)].key;
+      }
     }
 
     function rerender() {
-      renderChart(daySelect.value, tzSelect.value, Number(granularitySelect.value), smoothCheckbox.checked);
+      if (mode === 'single') {
+        valueEl.hidden = false;
+        summaryEl.hidden = true;
+        renderSingleDayChart(daySelect.value, tzSelect.value, Number(granularitySelect.value), smoothCheckbox.checked);
+      } else {
+        valueEl.hidden = true;
+        summaryEl.hidden = false;
+        renderDayCompareChart(dayASelect.value, dayBSelect.value, tzSelect.value, Number(granularitySelect.value), smoothCheckbox.checked);
+      }
     }
+
+    modeButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var next = btn.getAttribute('data-mode');
+        if (next === mode) return;
+        mode = next;
+        modeButtons.forEach(function (b) { b.classList.toggle('is-active', b.getAttribute('data-mode') === mode); });
+        singleControls.hidden = mode !== 'single';
+        compareControls.hidden = mode !== 'compare';
+        rerender();
+      });
+    });
+
     daySelect.addEventListener('change', rerender);
+    dayASelect.addEventListener('change', rerender);
+    dayBSelect.addEventListener('change', rerender);
     granularitySelect.addEventListener('change', rerender);
     smoothCheckbox.addEventListener('change', rerender);
     tzSelect.addEventListener('change', function () {
@@ -1234,7 +1322,7 @@
 
     buildDayOptions();
 
-    function renderChart(filter, tz, granularityMinutes, smooth) {
+    function renderSingleDayChart(filter, tz, granularityMinutes, smooth) {
       var deltas = computeDeltas(rows, granularityMinutes);
       var filtered = filter === 'all'
         ? deltas
@@ -1350,6 +1438,168 @@
 
         var containerRect = chartWrap.getBoundingClientRect();
         var ttX = (px / W) * containerRect.width;
+        var left = ttX + 14;
+        if (left + 170 > containerRect.width) left = ttX - 170 - 14;
+        tooltip.style.left = Math.max(0, left) + 'px';
+        tooltip.style.top = '8px';
+        tooltip.classList.add('is-visible');
+      }
+
+      function pointerLeave() {
+        hoverLayer.style.opacity = '0';
+        tooltip.classList.remove('is-visible');
+      }
+
+      hoverTarget.addEventListener('pointermove', pointerMove);
+      hoverTarget.addEventListener('pointerleave', pointerLeave);
+      hoverTarget.addEventListener('touchmove', function (e) { pointerMove(e); e.preventDefault(); }, { passive: false });
+      hoverTarget.addEventListener('touchend', pointerLeave);
+    }
+
+    function renderDayCompareChart(dayAKey, dayBKey, tz, granularityMinutes, smooth) {
+      var deltas = computeDeltas(rows, granularityMinutes);
+      var labelByKey = {};
+      dayList(tz).forEach(function (d) { labelByKey[d.key] = d.label; });
+
+      function seriesFor(dayKey, colorVar) {
+        var dayDeltas = deltas.filter(function (d) { return zonedDateKey(d.date, tz) === dayKey; });
+        if (!dayDeltas.length) return null;
+        var dayStart = zonedStartOfDay(dayDeltas[0].date, tz);
+        var points = dayDeltas.map(function (d) {
+          return { hour: (d.date.getTime() - dayStart.getTime()) / 3600000, value: d.value, gapMs: d.gapMs };
+        });
+        return {
+          key: dayKey,
+          label: labelByKey[dayKey] || dayKey,
+          colorVar: colorVar,
+          points: points,
+          sum: dayDeltas.reduce(function (a, d) { return a + d.value; }, 0)
+        };
+      }
+
+      var seriesA = dayAKey ? seriesFor(dayAKey, '--project-a') : null;
+      var seriesB = dayBKey ? seriesFor(dayBKey, '--project-b') : null;
+      var series = [seriesA, seriesB].filter(Boolean);
+
+      summaryEl.innerHTML = [
+        { s: seriesA, key: dayAKey, colorVar: '--project-a' },
+        { s: seriesB, key: dayBKey, colorVar: '--project-b' }
+      ].map(function (entry) {
+        var color = 'var(' + entry.colorVar + ')';
+        var name = (entry.s ? entry.s.label : (labelByKey[entry.key] || entry.key)) || 'No day selected';
+        var detail = entry.s
+          ? (entry.s.sum >= 0 ? '+' : '−') + fmtMoney(Math.abs(entry.s.sum))
+          : 'no changes recorded';
+        return '<li><span class="swatch" style="background:' + color + '"></span>' +
+               '<span class="name">' + name + '</span>' +
+               '<span class="detail">' + detail + '</span></li>';
+      }).join('');
+
+      if (!series.length) {
+        chartWrap.innerHTML = '';
+        var msg = document.createElement('p');
+        msg.className = 'panel-sub';
+        msg.style.padding = '28px 0 8px';
+        msg.textContent = 'No snapshot-to-snapshot changes recorded on either day.';
+        chartWrap.appendChild(msg);
+        return;
+      }
+
+      var W = 960, H = 260;
+      var marginLeft = 54, marginRight = 16, marginTop = 16, marginBottom = 26;
+
+      var allValues = [];
+      series.forEach(function (s) { s.points.forEach(function (p) { allValues.push(p.value); }); });
+      var yt = niceTicks(Math.min(0, Math.min.apply(null, allValues)), Math.max(0, Math.max.apply(null, allValues)), 4);
+
+      function xScale(hour) { return marginLeft + (hour / 24) * (W - marginLeft - marginRight); }
+      function yScale(v) { return H - marginBottom - ((v - yt.min) / (yt.max - yt.min || 1)) * (H - marginTop - marginBottom); }
+
+      var zeroY = yScale(0);
+
+      var gridSvg = yt.ticks.map(function (tv) {
+        var y = yScale(tv);
+        return '<line class="grid-line" x1="' + marginLeft + '" x2="' + (W - marginRight) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" />' +
+               '<text class="axis-label" x="8" y="' + (y + 3.5).toFixed(1) + '">' + fmtMoneyCompact(tv) + '</text>';
+      }).join('');
+
+      var xTicksSvg = [0, 4, 8, 12, 16, 20, 24].map(function (h) {
+        return '<text class="axis-label axis-label-x" x="' + xScale(h).toFixed(1) + '" y="' + (H - 6) + '">' + hourTickLabel(h) + '</text>';
+      }).join('');
+
+      var linesSvg = series.map(function (s) {
+        var color = 'var(' + s.colorVar + ')';
+        if (s.points.length < 2) {
+          var p0 = s.points[0];
+          return '<circle cx="' + xScale(p0.hour).toFixed(1) + '" cy="' + yScale(p0.value).toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2" />';
+        }
+        var screenPts = s.points.map(function (p) { return { x: xScale(p.hour), y: yScale(p.value) }; });
+        var d = smooth ? smoothPathD(screenPts) : 'M' + screenPts.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' L');
+        var last = s.points[s.points.length - 1];
+        return '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />' +
+               '<circle cx="' + xScale(last.hour).toFixed(1) + '" cy="' + yScale(last.value).toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2" />';
+      }).join('');
+
+      var hoverDotsSvg = series.map(function (s) {
+        return '<circle class="hover-dot" data-sk="' + s.key + '" r="4.5" fill="var(' + s.colorVar + ')" stroke="var(--surface)" stroke-width="2" />';
+      }).join('');
+
+      chartWrap.innerHTML =
+        '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Funds gained per snapshot, comparing two days">' +
+          '<line class="baseline" x1="' + marginLeft + '" x2="' + (W - marginRight) + '" y1="' + zeroY.toFixed(1) + '" y2="' + zeroY.toFixed(1) + '" />' +
+          gridSvg +
+          xTicksSvg +
+          linesSvg +
+          '<g class="hover-layer" style="opacity:0">' +
+            '<line class="crosshair" x1="0" x2="0" y1="' + marginTop + '" y2="' + (H - marginBottom) + '" />' +
+            hoverDotsSvg +
+          '</g>' +
+          '<rect class="hover-target" x="' + marginLeft + '" y="0" width="' + (W - marginLeft - marginRight) + '" height="' + H + '" />' +
+        '</svg>' +
+        '<div class="chart-tooltip"><div class="tt-date"></div></div>';
+
+      var svg = chartWrap.querySelector('svg');
+      var hoverLayer = chartWrap.querySelector('.hover-layer');
+      var crosshair = chartWrap.querySelector('.crosshair');
+      var hoverTarget = chartWrap.querySelector('.hover-target');
+      var tooltip = chartWrap.querySelector('.chart-tooltip');
+
+      function nearestPoint(points, hour) {
+        var best = points[0];
+        var bestDist = Math.abs(points[0].hour - hour);
+        for (var i = 1; i < points.length; i++) {
+          var d = Math.abs(points[i].hour - hour);
+          if (d < bestDist) { bestDist = d; best = points[i]; }
+        }
+        return best;
+      }
+
+      function pointerMove(evt) {
+        var rect = svg.getBoundingClientRect();
+        if (!rect.width) return;
+        var scaleX = W / rect.width;
+        var clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+        var localX = (clientX - rect.left) * scaleX;
+        var clamped = clamp(localX, marginLeft, W - marginRight);
+        var hoverHour = ((clamped - marginLeft) / (W - marginLeft - marginRight)) * 24;
+
+        crosshair.setAttribute('x1', clamped.toFixed(1));
+        crosshair.setAttribute('x2', clamped.toFixed(1));
+        hoverLayer.style.opacity = '1';
+
+        var rowsHtml = '<div class="tt-date">' + hourTickLabel(hoverHour) + '</div>';
+        series.forEach(function (s) {
+          var nearest = nearestPoint(s.points, hoverHour);
+          var dot = hoverLayer.querySelector('.hover-dot[data-sk="' + s.key + '"]');
+          dot.setAttribute('cx', xScale(nearest.hour).toFixed(1));
+          dot.setAttribute('cy', yScale(nearest.value).toFixed(1));
+          rowsHtml += '<div class="tt-row"><span class="swatch" style="background:var(' + s.colorVar + ')"></span>' +
+                      '<span>' + s.label + ':</span> <span class="tt-value">' + (nearest.value >= 0 ? '+' : '−') + fmtMoney(Math.abs(nearest.value)) + '</span></div>';
+        });
+        tooltip.innerHTML = rowsHtml;
+
+        var containerRect = chartWrap.getBoundingClientRect();
+        var ttX = (clamped / W) * containerRect.width;
         var left = ttX + 14;
         if (left + 170 > containerRect.width) left = ttX - 170 - 14;
         tooltip.style.left = Math.max(0, left) + 'px';
