@@ -1037,6 +1037,54 @@
     return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   }
 
+  var TIMEZONES = [
+    { id: 'America/Chicago', label: 'Central' },
+    { id: 'America/New_York', label: 'Eastern' },
+    { id: 'America/Denver', label: 'Mountain' },
+    { id: 'America/Los_Angeles', label: 'Pacific' },
+    { id: 'UTC', label: 'UTC' }
+  ];
+  var DEFAULT_TZ = 'America/Chicago';
+
+  // All timezone-of-day logic below works by finding the zone's UTC offset at a given
+  // instant (via a format/re-parse round trip - no timezone library needed) and shifting.
+  function tzOffsetMinutes(date, timeZone) {
+    var fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: timeZone, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    var parts = {};
+    fmt.formatToParts(date).forEach(function (p) { parts[p.type] = p.value; });
+    var asUTC = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second));
+    return Math.round((asUTC - date.getTime()) / 60000);
+  }
+  function zonedDateKey(date, timeZone) {
+    var shifted = new Date(date.getTime() + tzOffsetMinutes(date, timeZone) * 60000);
+    return shifted.getUTCFullYear() + '-' + String(shifted.getUTCMonth() + 1).padStart(2, '0') + '-' + String(shifted.getUTCDate()).padStart(2, '0');
+  }
+  function zonedStartOfDay(date, timeZone) {
+    var offsetMin = tzOffsetMinutes(date, timeZone);
+    var shifted = new Date(date.getTime() + offsetMin * 60000);
+    var localMidnightFaux = Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
+    return new Date(localMidnightFaux - offsetMin * 60000);
+  }
+  function formatHourLabel(date, timeZone) {
+    var shifted = new Date(date.getTime() + tzOffsetMinutes(date, timeZone) * 60000);
+    var h = shifted.getUTCHours();
+    var h12 = h % 12 || 12;
+    return h12 + (h >= 12 ? 'pm' : 'am');
+  }
+  function formatZonedDay(date, timeZone) {
+    return new Intl.DateTimeFormat('en-US', { timeZone: timeZone, month: 'short', day: 'numeric' }).format(date);
+  }
+  function formatZonedFull(date, timeZone) {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timeZone, month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short'
+    }).format(date);
+  }
+
   function computeDeltas(rows, granularityMinutes) {
     var bucketMs = granularityMinutes * 60000;
     var order = [];
@@ -1120,22 +1168,9 @@
       return panel;
     }
 
-    var firstDay = startOfUTCDay(rows[0]._date);
-    var lastDataDayStart = startOfUTCDay(rows[rows.length - 1]._date);
-    var todayKey = null;
-    var lastDayStart = lastDataDayStart;
-    if (project.status === 'live') {
-      var todayStart = startOfUTCDay(new Date());
-      todayKey = dateKey(todayStart);
-      if (todayStart > lastDayStart) lastDayStart = todayStart;
-    }
-
-    var dayOptionsHtml = '<option value="all">Whole campaign</option>';
-    for (var t = firstDay.getTime(); t <= lastDayStart.getTime(); t += 86400000) {
-      var optDate = new Date(t);
-      var key = dateKey(optDate);
-      dayOptionsHtml += '<option value="' + key + '">' + dayFmt.format(optDate) + (key === todayKey ? ' (Today)' : '') + '</option>';
-    }
+    var tzOptionsHtml = TIMEZONES.map(function (z) {
+      return '<option value="' + z.id + '"' + (z.id === DEFAULT_TZ ? ' selected' : '') + '>' + z.label + '</option>';
+    }).join('');
 
     head.innerHTML =
       '<div>' +
@@ -1145,7 +1180,8 @@
       '<div class="panel-head-right">' +
         '<div class="panel-value" id="' + uid + '-value" style="color:' + color + '"></div>' +
         '<div class="controls-row">' +
-          '<label class="select-wrap"><span class="sr-only">Day</span><select id="' + uid + '-day">' + dayOptionsHtml + '</select></label>' +
+          '<label class="select-wrap"><span class="sr-only">Day</span><select id="' + uid + '-day"></select></label>' +
+          '<label class="select-wrap"><span class="sr-only">Timezone</span><select id="' + uid + '-tz">' + tzOptionsHtml + '</select></label>' +
           '<label class="select-wrap"><span class="sr-only">Interval</span><select id="' + uid + '-granularity">' +
             '<option value="5">5 min</option>' +
             '<option value="30" selected>30 min</option>' +
@@ -1159,21 +1195,50 @@
 
     var valueEl = head.querySelector('#' + uid + '-value');
     var daySelect = head.querySelector('#' + uid + '-day');
+    var tzSelect = head.querySelector('#' + uid + '-tz');
     var granularitySelect = head.querySelector('#' + uid + '-granularity');
     var smoothCheckbox = head.querySelector('#' + uid + '-smooth');
 
+    function buildDayOptions() {
+      var tz = tzSelect.value;
+      var firstDay = zonedStartOfDay(rows[0]._date, tz);
+      var lastDataDayStart = zonedStartOfDay(rows[rows.length - 1]._date, tz);
+      var todayKey = null;
+      var lastDayStart = lastDataDayStart;
+      if (project.status === 'live') {
+        var todayStart = zonedStartOfDay(new Date(), tz);
+        todayKey = zonedDateKey(todayStart, tz);
+        if (todayStart > lastDayStart) lastDayStart = todayStart;
+      }
+
+      var html = '<option value="all">Whole campaign</option>';
+      for (var t = firstDay.getTime(); t <= lastDayStart.getTime(); t += 86400000) {
+        var optDate = new Date(t);
+        var key = zonedDateKey(optDate, tz);
+        html += '<option value="' + key + '">' + formatZonedDay(optDate, tz) + (key === todayKey ? ' (Today)' : '') + '</option>';
+      }
+      daySelect.innerHTML = html;
+    }
+
     function rerender() {
-      renderChart(daySelect.value, Number(granularitySelect.value), smoothCheckbox.checked);
+      renderChart(daySelect.value, tzSelect.value, Number(granularitySelect.value), smoothCheckbox.checked);
     }
     daySelect.addEventListener('change', rerender);
     granularitySelect.addEventListener('change', rerender);
     smoothCheckbox.addEventListener('change', rerender);
+    tzSelect.addEventListener('change', function () {
+      buildDayOptions();
+      daySelect.value = 'all';
+      rerender();
+    });
 
-    function renderChart(filter, granularityMinutes, smooth) {
+    buildDayOptions();
+
+    function renderChart(filter, tz, granularityMinutes, smooth) {
       var deltas = computeDeltas(rows, granularityMinutes);
       var filtered = filter === 'all'
         ? deltas
-        : deltas.filter(function (d) { return dateKey(d.date) === filter; });
+        : deltas.filter(function (d) { return zonedDateKey(d.date, tz) === filter; });
 
       if (!filtered.length) {
         valueEl.textContent = '—';
@@ -1226,7 +1291,7 @@
       for (var i = 0; i < xTickCount; i++) {
         var idx = xTickCount === 1 ? 0 : Math.round((i * (filtered.length - 1)) / (xTickCount - 1));
         var tickDate = filtered[idx].date;
-        var label = filter === 'all' ? dayFmt.format(tickDate) : fullFmt.format(tickDate).replace(/^.*, /, '');
+        var label = filter === 'all' ? formatZonedDay(tickDate, tz) : formatHourLabel(tickDate, tz);
         var x = xScale(tickDate.getTime());
         xTicksSvg += '<text class="axis-label axis-label-x" x="' + x.toFixed(1) + '" y="' + (H - 6) + '">' + label + '</text>';
       }
@@ -1280,7 +1345,7 @@
         hoverDot.setAttribute('cy', py.toFixed(1));
         hoverLayer.style.opacity = '1';
 
-        ttDate.textContent = fullFmt.format(d.date) + ' UTC · over ' + fmtInterval(d.gapMs);
+        ttDate.textContent = formatZonedFull(d.date, tz) + ' · over ' + fmtInterval(d.gapMs);
         ttValue.textContent = (d.value >= 0 ? '+' : '−') + fmtMoney(Math.abs(d.value));
 
         var containerRect = chartWrap.getBoundingClientRect();
