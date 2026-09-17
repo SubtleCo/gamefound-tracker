@@ -307,6 +307,8 @@
   }
   .panel-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--text-muted); }
   .panel-value { font-family: var(--font-mono); font-weight: 600; font-size: 1.3rem; white-space: nowrap; }
+  .panel-head-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .panel-head-right .select-wrap select { font-size: 12px; padding: 6px 10px; }
 
   .chart-wrap { position: relative; }
   .chart-wrap svg { display: block; width: 100%; height: auto; }
@@ -786,7 +788,7 @@
 
   function fetchAndRenderSingle(project) {
     fetchProjectData(project)
-      .then(function (rows) { renderSingle(rows); })
+      .then(function (rows) { renderSingle(rows, project); })
       .catch(function (err) {
         metaLine.textContent = 'Could not load snapshot data for this campaign.';
         tilesEl.innerHTML = '';
@@ -795,7 +797,7 @@
       });
   }
 
-  function renderSingle(rows) {
+  function renderSingle(rows, project) {
     if (!rows.length) {
       metaLine.textContent = 'No snapshots yet — check back once the tracker has run a few times.';
       tilesEl.innerHTML = '';
@@ -820,7 +822,7 @@
       tilesEl.appendChild(buildTile(metric, values, delta, first._date));
       panelsEl.appendChild(buildTimePanel(metric, rows, values, delta, first._date));
       if (metric.key === 'fundsGathered') {
-        panelsEl.appendChild(buildVelocityPanel(rows));
+        panelsEl.appendChild(buildVelocityPanel(rows, project));
       }
     });
 
@@ -1012,10 +1014,15 @@
     return (Math.round(day * 10) / 10) + ' day' + (day >= 1.95 ? 's' : '');
   }
 
-  function buildVelocityPanel(rows) {
+  function dayNumberOf(date, campaignStart) {
+    return Math.max(1, Math.floor((date.getTime() - campaignStart.getTime()) / 86400000) + 1);
+  }
+
+  function buildVelocityPanel(rows, project) {
     var panel = document.createElement('div');
     panel.className = 'panel';
     var color = 'var(--accent)';
+    var uid = 'velocity-' + project.id;
 
     var head = document.createElement('div');
     head.className = 'panel-head';
@@ -1045,122 +1052,168 @@
         gapMs: rows[i]._date.getTime() - rows[i - 1]._date.getTime()
       });
     }
-    var lastDelta = deltas[deltas.length - 1];
-    var isGood = lastDelta.value >= 0;
+
+    var campaignStart = new Date(project.campaignStart);
+    var lastDataDay = dayNumberOf(deltas[deltas.length - 1].date, campaignStart);
+    var todayDay = null;
+    if (project.status === 'live') {
+      todayDay = dayNumberOf(new Date(), campaignStart);
+    }
+    var maxDay = Math.max(lastDataDay, todayDay || 1);
+
+    var optionsHtml = '<option value="all">Whole campaign</option>';
+    for (var d = 1; d <= maxDay; d++) {
+      optionsHtml += '<option value="' + d + '">Day ' + d + (d === todayDay ? ' (Today)' : '') + '</option>';
+    }
 
     head.innerHTML =
       '<div>' +
         '<h3><span class="dot" style="background:' + color + '"></span>Funds per snapshot</h3>' +
-        '<p class="panel-sub">change since the previous snapshot — hover a bar for its interval</p>' +
+        '<p class="panel-sub">change since the previous snapshot — hover a point for its interval</p>' +
       '</div>' +
-      '<div class="panel-value" style="color:' + color + '">' + (isGood ? '+' : '−') + fmtMoney(Math.abs(lastDelta.value)) + '</div>';
+      '<div class="panel-head-right">' +
+        '<div class="panel-value" id="' + uid + '-value" style="color:' + color + '"></div>' +
+        '<label class="select-wrap"><span class="sr-only">Day</span><select id="' + uid + '-select">' + optionsHtml + '</select></label>' +
+      '</div>';
     panel.appendChild(head);
-
-    var W = 960, H = 260;
-    var marginLeft = 54, marginRight = 16, marginTop = 16, marginBottom = 26;
-    var minDate = deltas[0].date.getTime();
-    var maxDate = deltas[deltas.length - 1].date.getTime();
-    var values = deltas.map(function (d) { return d.value; });
-    var vmin = Math.min(0, Math.min.apply(null, values));
-    var vmax = Math.max(0, Math.max.apply(null, values));
-    var yt = niceTicks(vmin, vmax, 4);
-
-    function xScale(t) {
-      if (maxDate === minDate) return marginLeft;
-      return marginLeft + ((t - minDate) / (maxDate - minDate)) * (W - marginLeft - marginRight);
-    }
-    function yScale(v) {
-      return H - marginBottom - ((v - yt.min) / (yt.max - yt.min || 1)) * (H - marginTop - marginBottom);
-    }
-
-    var baselineY = yScale(0);
-
-    var gridSvg = yt.ticks.map(function (tv) {
-      var y = yScale(tv);
-      return '<line class="grid-line" x1="' + marginLeft + '" x2="' + (W - marginRight) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" />' +
-             '<text class="axis-label" x="8" y="' + (y + 3.5).toFixed(1) + '">' + fmtMoneyCompact(tv) + '</text>';
-    }).join('');
-
-    var xTickCount = Math.min(6, deltas.length);
-    var xTicksSvg = '';
-    for (var i = 0; i < xTickCount; i++) {
-      var idx = xTickCount === 1 ? 0 : Math.round((i * (deltas.length - 1)) / (xTickCount - 1));
-      var x = xScale(deltas[idx].date.getTime());
-      xTicksSvg += '<text class="axis-label axis-label-x" x="' + x.toFixed(1) + '" y="' + (H - 6) + '">' + dayFmt.format(deltas[idx].date) + '</text>';
-    }
-
-    var slotWidth = deltas.length > 1 ? (W - marginLeft - marginRight) / deltas.length : 20;
-    var barWidth = clamp(slotWidth * 0.7, 1, 14);
-
-    var barsSvg = deltas.map(function (d) {
-      var x = xScale(d.date.getTime());
-      var y = Math.min(yScale(d.value), baselineY);
-      var h = Math.max(0.5, Math.abs(yScale(d.value) - baselineY));
-      return '<rect x="' + (x - barWidth / 2).toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barWidth.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="1.5" fill="' + color + '" />';
-    }).join('');
-
-    chartWrap.innerHTML =
-      '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Funds gained per snapshot over time">' +
-        gridSvg +
-        xTicksSvg +
-        barsSvg +
-        '<line class="baseline" x1="' + marginLeft + '" x2="' + (W - marginRight) + '" y1="' + baselineY.toFixed(1) + '" y2="' + baselineY.toFixed(1) + '" />' +
-        '<g class="hover-layer" style="opacity:0">' +
-          '<line class="crosshair" x1="0" x2="0" y1="' + marginTop + '" y2="' + (H - marginBottom) + '" />' +
-        '</g>' +
-        '<rect class="hover-target" x="' + marginLeft + '" y="0" width="' + (W - marginLeft - marginRight) + '" height="' + H + '" />' +
-      '</svg>' +
-      '<div class="chart-tooltip"><div class="tt-date"></div><div class="tt-value"></div></div>';
-
     panel.appendChild(chartWrap);
 
-    var svg = chartWrap.querySelector('svg');
-    var hoverLayer = chartWrap.querySelector('.hover-layer');
-    var crosshair = chartWrap.querySelector('.crosshair');
-    var hoverTarget = chartWrap.querySelector('.hover-target');
-    var tooltip = chartWrap.querySelector('.chart-tooltip');
-    var ttDate = tooltip.querySelector('.tt-date');
-    var ttValue = tooltip.querySelector('.tt-value');
+    var valueEl = head.querySelector('#' + uid + '-value');
+    var daySelect = head.querySelector('#' + uid + '-select');
+    daySelect.addEventListener('change', function () { renderChart(daySelect.value); });
 
-    function pointerMove(evt) {
-      var rect = svg.getBoundingClientRect();
-      if (!rect.width) return;
-      var scaleX = W / rect.width;
-      var clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
-      var localX = (clientX - rect.left) * scaleX;
-      var clamped = clamp(localX, marginLeft, W - marginRight);
-      var frac = (clamped - marginLeft) / (W - marginLeft - marginRight);
-      var idx = Math.round(frac * (deltas.length - 1));
-      idx = clamp(idx, 0, deltas.length - 1);
+    function renderChart(filter) {
+      var filtered = filter === 'all'
+        ? deltas
+        : deltas.filter(function (d) { return dayNumberOf(d.date, campaignStart) === Number(filter); });
 
-      var d = deltas[idx];
-      var px = xScale(d.date.getTime());
+      if (!filtered.length) {
+        valueEl.textContent = '—';
+        chartWrap.innerHTML = '';
+        var msg = document.createElement('p');
+        msg.className = 'panel-sub';
+        msg.style.padding = '28px 0 8px';
+        msg.textContent = filter === 'all'
+          ? 'Waiting on more snapshots to plot a trend.'
+          : 'No snapshot-to-snapshot changes recorded on this day.';
+        chartWrap.appendChild(msg);
+        return;
+      }
 
-      crosshair.setAttribute('x1', px.toFixed(1));
-      crosshair.setAttribute('x2', px.toFixed(1));
-      hoverLayer.style.opacity = '1';
+      var lastDelta = filtered[filtered.length - 1];
+      valueEl.textContent = (lastDelta.value >= 0 ? '+' : '−') + fmtMoney(Math.abs(lastDelta.value));
 
-      ttDate.textContent = fullFmt.format(d.date) + ' UTC · over ' + fmtInterval(d.gapMs);
-      ttValue.textContent = (d.value >= 0 ? '+' : '−') + fmtMoney(Math.abs(d.value));
+      var W = 960, H = 260;
+      var marginLeft = 54, marginRight = 16, marginTop = 16, marginBottom = 26;
+      var minDate = filtered[0].date.getTime();
+      var maxDate = filtered[filtered.length - 1].date.getTime();
+      var values = filtered.map(function (d) { return d.value; });
+      var vmin = Math.min(0, Math.min.apply(null, values));
+      var vmax = Math.max(0, Math.max.apply(null, values));
+      var yt = niceTicks(vmin, vmax, 4);
 
-      var containerRect = chartWrap.getBoundingClientRect();
-      var ttX = (px / W) * containerRect.width;
-      var left = ttX + 14;
-      if (left + 170 > containerRect.width) left = ttX - 170 - 14;
-      tooltip.style.left = Math.max(0, left) + 'px';
-      tooltip.style.top = '8px';
-      tooltip.classList.add('is-visible');
+      function xScale(t) {
+        if (maxDate === minDate) return marginLeft;
+        return marginLeft + ((t - minDate) / (maxDate - minDate)) * (W - marginLeft - marginRight);
+      }
+      function yScale(v) {
+        return H - marginBottom - ((v - yt.min) / (yt.max - yt.min || 1)) * (H - marginTop - marginBottom);
+      }
+
+      var zeroY = yScale(0);
+
+      var linePts = filtered.map(function (d) { return xScale(d.date.getTime()).toFixed(1) + ',' + yScale(d.value).toFixed(1); });
+      var lineD = filtered.length > 1 ? 'M' + linePts.join(' L') : '';
+
+      var gridSvg = yt.ticks.map(function (tv) {
+        var y = yScale(tv);
+        return '<line class="grid-line" x1="' + marginLeft + '" x2="' + (W - marginRight) + '" y1="' + y.toFixed(1) + '" y2="' + y.toFixed(1) + '" />' +
+               '<text class="axis-label" x="8" y="' + (y + 3.5).toFixed(1) + '">' + fmtMoneyCompact(tv) + '</text>';
+      }).join('');
+
+      var xTickCount = Math.min(6, filtered.length);
+      var xTicksSvg = '';
+      for (var i = 0; i < xTickCount; i++) {
+        var idx = xTickCount === 1 ? 0 : Math.round((i * (filtered.length - 1)) / (xTickCount - 1));
+        var tickDate = filtered[idx].date;
+        var label = filter === 'all' ? dayFmt.format(tickDate) : fullFmt.format(tickDate).replace(/^.*, /, '');
+        var x = xScale(tickDate.getTime());
+        xTicksSvg += '<text class="axis-label axis-label-x" x="' + x.toFixed(1) + '" y="' + (H - 6) + '">' + label + '</text>';
+      }
+
+      var lastPoint = filtered[filtered.length - 1];
+      var lastX = xScale(lastPoint.date.getTime());
+      var lastY = yScale(lastPoint.value);
+
+      chartWrap.innerHTML =
+        '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Funds gained per snapshot over time">' +
+          gridSvg +
+          xTicksSvg +
+          (lineD ? '<path d="' + lineD + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />' : '') +
+          '<line class="baseline" x1="' + marginLeft + '" x2="' + (W - marginRight) + '" y1="' + zeroY.toFixed(1) + '" y2="' + zeroY.toFixed(1) + '" />' +
+          '<circle cx="' + lastX.toFixed(1) + '" cy="' + lastY.toFixed(1) + '" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2" />' +
+          '<g class="hover-layer" style="opacity:0">' +
+            '<line class="crosshair" x1="0" x2="0" y1="' + marginTop + '" y2="' + (H - marginBottom) + '" />' +
+            '<circle class="hover-dot" r="4.5" fill="' + color + '" stroke="var(--surface)" stroke-width="2" />' +
+          '</g>' +
+          '<rect class="hover-target" x="' + marginLeft + '" y="0" width="' + (W - marginLeft - marginRight) + '" height="' + H + '" />' +
+        '</svg>' +
+        '<div class="chart-tooltip"><div class="tt-date"></div><div class="tt-value"></div></div>';
+
+      var svg = chartWrap.querySelector('svg');
+      var hoverLayer = chartWrap.querySelector('.hover-layer');
+      var crosshair = chartWrap.querySelector('.crosshair');
+      var hoverDot = chartWrap.querySelector('.hover-dot');
+      var hoverTarget = chartWrap.querySelector('.hover-target');
+      var tooltip = chartWrap.querySelector('.chart-tooltip');
+      var ttDate = tooltip.querySelector('.tt-date');
+      var ttValue = tooltip.querySelector('.tt-value');
+
+      function pointerMove(evt) {
+        var rect = svg.getBoundingClientRect();
+        if (!rect.width) return;
+        var scaleX = W / rect.width;
+        var clientX = evt.touches ? evt.touches[0].clientX : evt.clientX;
+        var localX = (clientX - rect.left) * scaleX;
+        var clamped = clamp(localX, marginLeft, W - marginRight);
+        var frac = (clamped - marginLeft) / (W - marginLeft - marginRight);
+        var idx = Math.round(frac * (filtered.length - 1));
+        idx = clamp(idx, 0, filtered.length - 1);
+
+        var d = filtered[idx];
+        var px = xScale(d.date.getTime());
+        var py = yScale(d.value);
+
+        crosshair.setAttribute('x1', px.toFixed(1));
+        crosshair.setAttribute('x2', px.toFixed(1));
+        hoverDot.setAttribute('cx', px.toFixed(1));
+        hoverDot.setAttribute('cy', py.toFixed(1));
+        hoverLayer.style.opacity = '1';
+
+        ttDate.textContent = fullFmt.format(d.date) + ' UTC · over ' + fmtInterval(d.gapMs);
+        ttValue.textContent = (d.value >= 0 ? '+' : '−') + fmtMoney(Math.abs(d.value));
+
+        var containerRect = chartWrap.getBoundingClientRect();
+        var ttX = (px / W) * containerRect.width;
+        var left = ttX + 14;
+        if (left + 170 > containerRect.width) left = ttX - 170 - 14;
+        tooltip.style.left = Math.max(0, left) + 'px';
+        tooltip.style.top = '8px';
+        tooltip.classList.add('is-visible');
+      }
+
+      function pointerLeave() {
+        hoverLayer.style.opacity = '0';
+        tooltip.classList.remove('is-visible');
+      }
+
+      hoverTarget.addEventListener('pointermove', pointerMove);
+      hoverTarget.addEventListener('pointerleave', pointerLeave);
+      hoverTarget.addEventListener('touchmove', function (e) { pointerMove(e); e.preventDefault(); }, { passive: false });
+      hoverTarget.addEventListener('touchend', pointerLeave);
     }
 
-    function pointerLeave() {
-      hoverLayer.style.opacity = '0';
-      tooltip.classList.remove('is-visible');
-    }
-
-    hoverTarget.addEventListener('pointermove', pointerMove);
-    hoverTarget.addEventListener('pointerleave', pointerLeave);
-    hoverTarget.addEventListener('touchmove', function (e) { pointerMove(e); e.preventDefault(); }, { passive: false });
-    hoverTarget.addEventListener('touchend', pointerLeave);
+    renderChart('all');
 
     return panel;
   }
