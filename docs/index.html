@@ -1223,6 +1223,7 @@
           '<label class="select-wrap"><span class="sr-only">First day</span><select id="' + uid + '-dayA"></select></label>' +
           '<span class="vs-label">vs</span>' +
           '<label class="select-wrap"><span class="sr-only">Second day</span><select id="' + uid + '-dayB"></select></label>' +
+          '<label class="smooth-toggle"><input type="checkbox" id="' + uid + '-cumulative" checked>Cumulative</label>' +
         '</div>' +
         '<div class="controls-row">' +
           '<label class="select-wrap"><span class="sr-only">Timezone</span><select id="' + uid + '-tz">' + tzOptionsHtml + '</select></label>' +
@@ -1246,6 +1247,7 @@
     var daySelect = head.querySelector('#' + uid + '-day');
     var dayASelect = head.querySelector('#' + uid + '-dayA');
     var dayBSelect = head.querySelector('#' + uid + '-dayB');
+    var cumulativeCheckbox = head.querySelector('#' + uid + '-cumulative');
     var tzSelect = head.querySelector('#' + uid + '-tz');
     var granularitySelect = head.querySelector('#' + uid + '-granularity');
     var smoothCheckbox = head.querySelector('#' + uid + '-smooth');
@@ -1293,7 +1295,7 @@
       } else {
         valueEl.hidden = true;
         summaryEl.hidden = false;
-        renderDayCompareChart(dayASelect.value, dayBSelect.value, tzSelect.value, Number(granularitySelect.value), smoothCheckbox.checked);
+        renderDayCompareChart(dayASelect.value, dayBSelect.value, tzSelect.value, Number(granularitySelect.value), smoothCheckbox.checked, cumulativeCheckbox.checked);
       }
     }
 
@@ -1312,6 +1314,7 @@
     daySelect.addEventListener('change', rerender);
     dayASelect.addEventListener('change', rerender);
     dayBSelect.addEventListener('change', rerender);
+    cumulativeCheckbox.addEventListener('change', rerender);
     granularitySelect.addEventListener('change', rerender);
     smoothCheckbox.addEventListener('change', rerender);
     tzSelect.addEventListener('change', function () {
@@ -1456,7 +1459,7 @@
       hoverTarget.addEventListener('touchend', pointerLeave);
     }
 
-    function renderDayCompareChart(dayAKey, dayBKey, tz, granularityMinutes, smooth) {
+    function renderDayCompareChart(dayAKey, dayBKey, tz, granularityMinutes, smooth, cumulative) {
       var deltas = computeDeltas(rows, granularityMinutes);
       var labelByKey = {};
       dayList(tz).forEach(function (d) { labelByKey[d.key] = d.label; });
@@ -1465,8 +1468,10 @@
         var dayDeltas = deltas.filter(function (d) { return zonedDateKey(d.date, tz) === dayKey; });
         if (!dayDeltas.length) return null;
         var dayStart = zonedStartOfDay(dayDeltas[0].date, tz);
+        var running = 0;
         var points = dayDeltas.map(function (d) {
-          return { hour: (d.date.getTime() - dayStart.getTime()) / 3600000, value: d.value, gapMs: d.gapMs };
+          running += d.value;
+          return { hour: (d.date.getTime() - dayStart.getTime()) / 3600000, value: cumulative ? running : d.value, gapMs: d.gapMs };
         });
         return {
           key: dayKey,
@@ -1545,7 +1550,7 @@
       }).join('');
 
       chartWrap.innerHTML =
-        '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Funds gained per snapshot, comparing two days">' +
+        '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + (cumulative ? 'Cumulative funds gained, comparing two days' : 'Funds gained per snapshot, comparing two days') + '">' +
           '<line class="baseline" x1="' + marginLeft + '" x2="' + (W - marginRight) + '" y1="' + zeroY.toFixed(1) + '" y2="' + zeroY.toFixed(1) + '" />' +
           gridSvg +
           xTicksSvg +
