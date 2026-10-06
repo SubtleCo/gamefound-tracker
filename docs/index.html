@@ -837,6 +837,27 @@
       });
   }
 
+  function nearestRowTo(rows, targetTime) {
+    var best = rows[0];
+    var bestDist = Math.abs(rows[0]._date.getTime() - targetTime);
+    for (var i = 1; i < rows.length; i++) {
+      var d = Math.abs(rows[i]._date.getTime() - targetTime);
+      if (d < bestDist) { bestDist = d; best = rows[i]; }
+    }
+    return best;
+  }
+
+  // "Since launch" stops being useful information once a campaign has been running
+  // a while (it just restates the current total). Compare to ~24h ago instead, once
+  // there's enough history for that comparison to mean anything.
+  function recentBaseline(rows, last) {
+    var dayAgoTarget = last._date.getTime() - 86400000;
+    if (dayAgoTarget <= rows[0]._date.getTime()) {
+      return { row: rows[0], label: 'since ' + dayFmt.format(rows[0]._date) };
+    }
+    return { row: nearestRowTo(rows, dayAgoTarget), label: 'since yesterday' };
+  }
+
   function renderSingle(rows, project) {
     if (!rows.length) {
       metaLine.textContent = 'No snapshots yet — check back once the tracker has run a few times.';
@@ -856,11 +877,13 @@
     tilesEl.innerHTML = '';
     panelsEl.innerHTML = '';
 
+    var baseline = recentBaseline(rows, last);
+
     METRICS.forEach(function (metric) {
       var values = rows.map(function (r) { return r[metric.key]; });
-      var delta = last[metric.key] - first[metric.key];
-      tilesEl.appendChild(buildTile(metric, values, delta, first._date));
-      panelsEl.appendChild(buildTimePanel(metric, rows, values, delta, first._date));
+      var delta = last[metric.key] - baseline.row[metric.key];
+      tilesEl.appendChild(buildTile(metric, values, delta, baseline.label));
+      panelsEl.appendChild(buildTimePanel(metric, rows, values, delta, baseline.label));
       if (metric.key === 'fundsGathered') {
         panelsEl.appendChild(buildVelocityPanel(rows, project));
       }
@@ -881,7 +904,7 @@
     tbody.appendChild(frag);
   }
 
-  function buildTile(metric, values, delta, firstDate) {
+  function buildTile(metric, values, delta, sinceLabel) {
     var tile = document.createElement('div');
     tile.className = 'tile';
     var lastVal = values[values.length - 1];
@@ -895,7 +918,7 @@
       '<div class="tile-delta ' + (isGood ? 'is-good' : 'is-bad') + '">' +
         '<span aria-hidden="true">' + (isGood ? '▲' : '▼') + '</span>' +
         '<span>' + (isGood ? '+' : '−') + metric.hero(Math.abs(delta)) + '</span>' +
-        '<span class="tile-delta-note">since ' + dayFmt.format(firstDate) + '</span>' +
+        '<span class="tile-delta-note">' + sinceLabel + '</span>' +
       '</div>' +
       '<svg class="tile-spark" viewBox="0 0 120 32" preserveAspectRatio="none" aria-hidden="true">' +
         '<path d="' + sparkPath + '" fill="none" stroke="' + color + '" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />' +
@@ -903,7 +926,7 @@
     return tile;
   }
 
-  function buildTimePanel(metric, rows, values, delta, firstDate) {
+  function buildTimePanel(metric, rows, values, delta, sinceLabel) {
     var panel = document.createElement('div');
     panel.className = 'panel';
     var lastVal = values[values.length - 1];
@@ -916,7 +939,7 @@
     head.innerHTML =
       '<div>' +
         '<h3><span class="dot" style="background:' + color + '"></span>' + metric.label + '</h3>' +
-        '<p class="panel-sub">' + (isGood ? '+' : '−') + metric.hero(Math.abs(delta)) + ' since ' + dayFmt.format(firstDate) + '</p>' +
+        '<p class="panel-sub">' + (isGood ? '+' : '−') + metric.hero(Math.abs(delta)) + ' ' + sinceLabel + '</p>' +
       '</div>' +
       '<div class="panel-value" style="color:' + color + '">' + metric.hero(lastVal) + '</div>';
     panel.appendChild(head);
