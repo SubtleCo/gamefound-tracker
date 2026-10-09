@@ -82,17 +82,55 @@ or watch it scroll by in the `sam deploy` output.
 
 ## When a campaign ends
 
-Don't leave the stack (and its 5-minute schedule) running forever for
-numbers that will never change again. Instead, freeze it once:
+Don't leave the 5-minute schedule running forever for numbers that will
+never change again. Freeze the data, then stop the fetching.
+
+**1. Snapshot the final data into the repo.** The aggregate is public,
+so this works with or without AWS credentials:
 
 ```
-make fetch PROJECT=<project>          # writes <project>.json locally
-cp <project>.json docs/data/<project>.json
+curl -s "<PublicHistoryUrl>" -o docs/data/<project>.json
 ```
 
-Then flip its `docs/index.html` entry to `status: 'archived'` and point
-`url` at `data/<project>.json`. The stack itself can stay running or be
-torn down separately - the dashboard no longer depends on it either way.
+(or `make fetch PROJECT=<project>` and copy the `<project>.json` it
+writes, if you're logged into AWS anyway).
+
+Trim anything after the campaign's actual close date - the tracker
+usually keeps running for a while past the end, and those trailing rows
+are flat for funds/backers (only `commentCount` keeps moving), so they
+add a dead tail to the velocity chart for no information.
+
+**2. Archive it in the dashboard.** In `docs/index.html`, flip the
+project's entry to `status: 'archived'` and point `url` at
+`data/<project>.json`. Also set `campaignEnd` to the campaign's *real*
+close time from the Gamefound API (`campaignEndDate`) - campaigns often
+run a little past their originally scheduled end, and that field drives
+the percent-elapsed axis in compare mode.
+
+**3. Stop the fetching:**
+
+```
+make deploy PROJECT=<project>   # with ScheduleState="DISABLED" in samconfig.toml
+```
+
+Set `ScheduleState="DISABLED"` in that project's `parameter_overrides`
+in `samconfig.toml` first. This keeps the stack, the bucket and all the
+raw data exactly where they are - it only switches the EventBridge rule
+off, and flipping back to `ENABLED` resumes collection.
+
+> Do **not** disable the rule by hand in the console. That leaves the
+> stack drifted from its template with no record of why, which is how
+> the altera schedule ended up silently missing for two months while
+> CloudFormation still reported `UPDATE_COMPLETE`.
+
+Note that `samconfig.toml` is gitignored (per-machine deploy state), so
+the `DISABLED` setting lives only on the machine that deployed it. On a
+fresh clone, pass it explicitly instead:
+`sam deploy --config-env <project> --parameter-overrides Project="<project>" ScheduleState="DISABLED"`.
+
+Tearing the stack down entirely is also an option - the bucket is
+`DeletionPolicy: Retain`, so the data survives - but disabling costs
+effectively nothing and is far easier to undo.
 
 ## Adding a campaign we never tracked ourselves
 

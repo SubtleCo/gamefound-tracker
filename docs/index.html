@@ -484,7 +484,7 @@
   </section>
 
   <footer class="page-footer">
-    <p>Tend Expansions refreshes automatically from a public snapshot on S3, updated by a scheduled Lambda every 5 minutes; this page re-polls it every 60 seconds while open. Every other campaign here is concluded &mdash; a fixed snapshot, either from our own tracker (Altera) or reconstructed from daily data published at <a class="footer-link" href="https://www.tabletopanalytics.com/creator/iv-studios-7850" target="_blank" rel="noopener">tabletopanalytics.com</a> (everything else, all originally on Kickstarter). Compare mode aligns every campaign by percent of campaign elapsed (start to scheduled end), not by calendar date.</p>
+    <p>Every campaign here has concluded, so these are fixed snapshots rather than live data. Tend Expansions and Altera come from our own tracker (5-minute and hourly snapshots respectively); the rest were reconstructed from daily data published at <a class="footer-link" href="https://www.tabletopanalytics.com/creator/iv-studios-7850" target="_blank" rel="noopener">tabletopanalytics.com</a>, and all of those originally ran on Kickstarter. Compare mode aligns every campaign by percent of campaign elapsed (start to close), not by calendar date.</p>
   </footer>
 </div>
 
@@ -498,11 +498,11 @@
     {
       id: 'tend-expansions',
       label: 'Tend Expansions',
-      status: 'live',
+      status: 'archived',
       defaultOn: true,
-      url: 'https://tend-expansions-data-fetch-alteradatabucket-ubsldl5prg3c.s3.us-east-1.amazonaws.com/tend-expansions/history.json',
+      url: 'data/tend-expansions.json',
       campaignStart: '2026-09-15T15:00:00Z',
-      campaignEnd: '2026-10-07T22:00:00Z',
+      campaignEnd: '2026-10-08T14:42:56.253Z',
       colorVar: '--project-a',
       platformUrl: 'https://gamefound.com/projects/tend-expansions'
     },
